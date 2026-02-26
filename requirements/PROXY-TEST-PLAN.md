@@ -4,8 +4,8 @@
 
 | Field | Value |
 |-------|-------|
-| Date | 2026-02-24 |
-| Status | Planning |
+| Date | 2026-02-24 (updated 2026-02-26) |
+| Status | Sprint 1-3 Done, Sprint 4 Not Started |
 | Tech Stack | Go (Runner) + Node.js/TypeScript (API, Target, Dashboard) + PostgreSQL |
 | Deploy | Local only (Docker Compose) |
 | Scale | 10 proxies / 10 providers song song, 1000 requests/min/proxy |

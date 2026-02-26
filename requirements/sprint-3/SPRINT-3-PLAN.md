@@ -84,9 +84,10 @@ target/
 - Server track pong response
 
 **Hold duration**:
-- Query param `?hold=60000` (default 60s)
+- Query param `?hold=60000` (default: no hold limit — kết nối mở vĩnh viễn nếu client không gửi `?hold=`)
+- WS tester client luôn gửi `?hold=60000` khi kết nối
 - Khi hết hold → server close connection với code 1000 (Normal Closure)
-- Reason: `"hold_duration_reached"`
+- Reason: `"hold duration reached"`
 
 **Close frame handling**:
 - Server gửi close frame code 1000
@@ -111,7 +112,9 @@ export function setupEchoServer(wss: WebSocketServer, protocol: string, port: nu
   wss.on('connection', (ws: WebSocket, req) => {
     const clientIP = req.socket.remoteAddress || 'unknown';
     const url = new URL(req.url || '/', `http://${req.headers.host}`);
-    const holdMs = parseInt(url.searchParams.get('hold') || '60000', 10);
+    let holdMs = 0; // default: no hold limit (client sends ?hold=60000)
+    const holdParam = url.searchParams.get('hold');
+    if (holdParam) holdMs = parseInt(holdParam, 10);
     let messagesCount = 0;
     const startTime = Date.now();
 

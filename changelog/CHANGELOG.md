@@ -517,6 +517,58 @@ Ghi lại toàn bộ quá trình phát triển project, từ lên plan đến im
 
 ---
 
+### v5.0 — Sprint 3 Implementation Complete
+
+**Toàn bộ Sprint 3 (8 tasks) đã implement và build/test verified.**
+
+**Target Service (1 file rewritten):**
+- `ws/wsEcho.ts` — Full WS echo server: echo mọi message, server ping mỗi 10s, pong tracking, hold duration timer (`?hold=60000`), proper cleanup on close/error, 6 structured log events
+
+**Go Runner (3 new files + 7 modified):**
+- **NEW** `proxy/ws_tester.go` (~300 lines) — WS/WSS tester using gorilla/websocket v1.5.3
+  - Alternating ws/wss connections, 60 messages/min echo loop, ping/pong monitoring (3 consecutive timeouts → dead)
+  - 5s read deadline for drop detection, reconnection with 3x backoff, never gives up
+  - Uses `websocket.Dialer.Proxy = http.ProxyURL()` for proxy tunneling
+- **NEW** `ipcheck/blacklist.go` — DNSBL lookup against 4 servers (Spamhaus, Barracuda, SpamCop, SORBS)
+- **NEW** `ipcheck/geoip.go` — GeoIP via ip-api.com free API (country/region/city verification)
+- **Modified** `domain/types.go` — Added WSSample (17 fields), IPCheckResult (16 fields), BurstConfig; expanded RunSummary with WS metrics, IP fields, score_ws, score_security
+- **Modified** `engine/orchestrator.go` — Phase 1: real IP check (getIPViaProxy + DNSBL + GeoIP); Phase 3: WS tester goroutine, WS collector, burst test goroutine (7 goroutines total)
+- **Modified** `engine/result_collector.go` — Added ComputeWSSummary() for WS metrics aggregation
+- **Modified** `scoring/scorer.go` — 5-component scoring: Uptime(25%) + Latency(25%) + Jitter(15%) + WS(15%) + Security(20%), with automatic weight redistribution when phases skipped
+- **Modified** `reporter/api_reporter.go` — Added ReportWSSamples() and ReportIPCheck() methods
+- **Modified** `server/handler.go` — Each run gets isolated context for proper multi-proxy stop
+- **Modified** `go.mod` — Added github.com/gorilla/websocket v1.5.3
+
+**Controller API (1 file modified):**
+- `routes/runs.ts` — Full Sprint 3 endpoints:
+  - POST /ws-samples/batch — 16-column INSERT + total_ws_samples counter update
+  - POST /ip-checks — 15-column INSERT with proxy_id from run record
+  - GET /ws-samples — Paginated with protocol filter (ws/wss)
+  - GET /ip-checks — Returns all ip_check_result rows for run
+  - POST /summary — Extended with ws_*, ip_*, score_ws, score_security fields
+
+**Dashboard (3 new files + 5 modified):**
+- **NEW** `RunWSSamples.tsx` — WS connections table (seq, protocol badge, status, handshake, RTT, messages, drops, held duration, disconnect reason)
+- **NEW** `RunIPCheck.tsx` — IP check display (observed IP, country with match badge, blacklist status with sources, IP stability, checked_at)
+- **NEW** `RunScoreBreakdown.tsx` — Visual score bars for 5 components with dynamic weights, grade display
+- **Modified** `types/index.ts` — Added WsSample, IPCheckResult interfaces
+- **Modified** `useRunDetail.ts` — 5 parallel fetches (run + summary + HTTP + WS + IP), returns wsSamples + ipChecks
+- **Modified** `RunSummaryCards.tsx` — 4→6 summary cards (added WS RTT + IP Status)
+- **Modified** `RunMetricsDetail.tsx` — Added WS metrics section, WebSocket row in protocol breakdown, 5-component scoring table
+- **Modified** `runs/[runId]/page.tsx` — 4 tabs (HTTP Samples, WS Connections, IP Check, Score Breakdown) with count badges
+
+**Sprint 3 totals: 6 new files + 14 modified = 20 files**
+
+**Build verified:**
+- Go: `go build ./...` — clean
+- API: `tsc --noEmit` — clean
+- Target: `tsc --noEmit` — clean
+- Dashboard: `tsc --noEmit` + `next build` — clean (all routes building)
+- Docker: All 5 containers healthy
+- API endpoints: POST/GET ws-samples, ip-checks, summary all tested with correct data
+
+---
+
 ### v2.1 — Project Structure Tree Update
 
 ### Fixed

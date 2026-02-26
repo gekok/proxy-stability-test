@@ -126,7 +126,8 @@ Xây: Dashboard UI — form nhập proxy, nút Run Test, xem kết quả cơ b�
 - Đóng browser → test vẫn chạy, mở lại vẫn thấy kết quả
 - Không cần mở terminal, không cần biết YAML
 
-> Chi tiết: `requirements/sprint-2/` (chưa có plan chi tiết)
+> Chi tiết: `requirements/sprint-2/SPRINT-2-PLAN.md`
+> Giải thích: `requirements/sprint-2/SPRINT-2-EXPLANATION.md`
 
 ---
 
@@ -146,7 +147,8 @@ Xây: WS/WSS test + Kiểm tra IP + Test song song nhiều proxy
 - Biết IP proxy có sạch không, có đúng quốc gia không
 - Chọn 10 proxy từ 10 nhà cung cấp → bấm 1 nút → tất cả test song song (1000 RPM mỗi proxy = 500 HTTP + 500 HTTPS)
 
-> Chi tiết: `requirements/sprint-3/` (chưa có plan chi tiết)
+> Chi tiết: `requirements/sprint-3/SPRINT-3-PLAN.md`
+> Giải thích: `requirements/sprint-3/SPRINT-3-EXPLANATION.md`
 
 ---
 
@@ -167,7 +169,8 @@ Xây: Charts chi tiết, so sánh providers, export report
 - Export JSON/CSV gửi cho team
 - Xem log lỗi chi tiết — biết lỗi ở phase nào, proxy nào, lúc nào
 
-> Chi tiết: `requirements/sprint-4/` (chưa có plan chi tiết)
+> Chi tiết: `requirements/sprint-4/SPRINT-4-PLAN.md`
+> Giải thích: `requirements/sprint-4/SPRINT-4-EXPLANATION.md`
 
 ---
 
@@ -364,11 +367,17 @@ requirements/
 ├── PLAN-EXPLANATION.md              ← File này — giải thích plan tổng
 ├── PROXY-TEST-PLAN.md               ← Plan implementation chi tiết (v1.2)
 ├── sprint-1/
-│   ├── SPRINT-1-PLAN.md             ← Sprint 1 chi tiết — 9 tasks
+│   ├── SPRINT-1-PLAN.md             ← Sprint 1 chi tiết — 9 tasks (DONE)
 │   └── SPRINT-1-EXPLANATION.md      ← Giải thích Sprint 1
-├── sprint-2/                        ← (chờ plan)
-├── sprint-3/                        ← (chờ plan)
-└── sprint-4/                        ← (chờ plan)
+├── sprint-2/
+│   ├── SPRINT-2-PLAN.md             ← Sprint 2 chi tiết — 9 tasks (DONE)
+│   └── SPRINT-2-EXPLANATION.md      ← Giải thích Sprint 2
+├── sprint-3/
+│   ├── SPRINT-3-PLAN.md             ← Sprint 3 chi tiết — 9 tasks (DONE)
+│   └── SPRINT-3-EXPLANATION.md      ← Giải thích Sprint 3
+└── sprint-4/
+    ├── SPRINT-4-PLAN.md             ← Sprint 4 chi tiết — 8 tasks (Not Started)
+    └── SPRINT-4-EXPLANATION.md      ← Giải thích Sprint 4
 
 changelog/
 └── CHANGELOG.md                     ← Lịch sử thay đổi plan

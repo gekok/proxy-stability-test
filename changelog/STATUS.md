@@ -10,7 +10,7 @@ Last updated: 2026-02-26
 |--------|--------|-------|
 | **Sprint 1** | **DONE** | Foundation — Target, API, Runner, Engine, Reporter, Scorer |
 | **Sprint 2** | **DONE** | Dashboard UI — CRUD pages, Start/Stop flow, Run detail, Overview |
-| Sprint 3 | Not started | WebSocket + IP Check + Multi-proxy scheduler + Burst |
+| **Sprint 3** | **DONE** | WS tester, IP checker, Burst test, 5-component scoring, API WS/IP endpoints, Dashboard 4 tabs |
 | Sprint 4 | Not started | Charts, Export, Compare, Error log viewer |
 
 ---
@@ -35,8 +35,8 @@ Last updated: 2026-02-26
 | `proxy_endpoint` | Proxy connection details | Yes |
 | `test_run` | Test run lifecycle | Yes |
 | `http_sample` | HTTP/HTTPS request results | Yes |
-| `ws_sample` | WebSocket results | Empty (Sprint 3) |
-| `ip_check_result` | IP security checks | Empty (Sprint 3) |
+| `ws_sample` | WebSocket results | Populated (Sprint 3) |
+| `ip_check_result` | IP security checks | Populated (Sprint 3) |
 | `run_summary` | Aggregated metrics + scores | Yes |
 
 ### Files Created (68 total)
@@ -162,15 +162,92 @@ Scoring: 3 components (Uptime 38.5% + Latency 38.5% + Jitter 23.0%)
 
 ---
 
-## Known Limitations (Sprint 2)
+## Sprint 3 — Completed (2026-02-26)
 
-1. **WebSocket**: Goroutine exists but placeholder (Sprint 3)
-2. **IP Check**: Placeholder (Sprint 3)
-3. **Scoring**: 3 components only (Sprint 3 adds WS + Security = 5)
-4. **Multi-proxy**: Single proxy only (Sprint 3 adds max 10 parallel)
-5. **Charts/Export**: Not implemented (Sprint 4)
-6. **External proxies**: Require ngrok or public IP to expose Target service
-7. **No charts**: Run detail shows tables only, recharts added in Sprint 4
+### New Files (6)
+
+| File | Purpose |
+|------|---------|
+| `runner/internal/proxy/ws_tester.go` | WS/WSS tester (gorilla/websocket, 60 msg/min, ping/pong, reconnection) |
+| `runner/internal/ipcheck/blacklist.go` | DNSBL blacklist lookup (4 servers) |
+| `runner/internal/ipcheck/geoip.go` | GeoIP country/region/city via ip-api.com |
+| `dashboard/src/components/runs/RunWSSamples.tsx` | WS connections table (protocol, RTT, drops, held, disconnect) |
+| `dashboard/src/components/runs/RunIPCheck.tsx` | IP check display (blacklist, geo, stability) |
+| `dashboard/src/components/runs/RunScoreBreakdown.tsx` | 5-component score bars with grades |
+
+### Modified Files (14)
+
+| File | Changes |
+|------|---------|
+| `target/src/ws/wsEcho.ts` | Full rewrite: echo, ping/pong 10s, hold timer, structured logging |
+| `runner/go.mod` | Added gorilla/websocket v1.5.3 |
+| `runner/internal/domain/types.go` | Added WSSample, IPCheckResult, BurstConfig; expanded RunSummary |
+| `runner/internal/engine/orchestrator.go` | IP check in Phase 1, WS/burst goroutines in Phase 3 (7 total) |
+| `runner/internal/engine/result_collector.go` | Added ComputeWSSummary() |
+| `runner/internal/scoring/scorer.go` | 3→5 component scoring with weight redistribution |
+| `runner/internal/reporter/api_reporter.go` | Added ReportWSSamples(), ReportIPCheck() |
+| `runner/internal/server/handler.go` | Isolated context per run for multi-proxy stop |
+| `api/src/routes/runs.ts` | WS batch insert, IP check insert, GET ws-samples/ip-checks, summary ws/ip/score fields |
+| `dashboard/src/types/index.ts` | Added WsSample, IPCheckResult interfaces |
+| `dashboard/src/hooks/useRunDetail.ts` | 5 parallel fetches (run + summary + HTTP + WS + IP) |
+| `dashboard/src/components/runs/RunSummaryCards.tsx` | 4→6 cards (WS RTT, IP Status) |
+| `dashboard/src/components/runs/RunMetricsDetail.tsx` | WS metrics, 5-component scoring table |
+| `dashboard/src/app/runs/[runId]/page.tsx` | 4 tabs: HTTP Samples, WS Connections, IP Check, Score Breakdown |
+
+### New API Endpoints
+
+| Method | Endpoint | Status |
+|--------|----------|--------|
+| POST | `/api/v1/runs/:id/ws-samples/batch` | Working |
+| POST | `/api/v1/runs/:id/ip-checks` | Working |
+| GET | `/api/v1/runs/:id/ws-samples` | Working (paginated, protocol filter) |
+| GET | `/api/v1/runs/:id/ip-checks` | Working |
+
+### Scoring (Sprint 3 — 5 components)
+
+```
+Score = 0.25 × Uptime + 0.25 × Latency + 0.15 × Jitter + 0.15 × WS + 0.20 × Security
+
+S_ws = 0.4*(1-wsErrorRate) + 0.3*(1-wsDropRate) + 0.3*wsHoldRatio
+S_security = 0.30*ipClean + 0.25*geoMatch + 0.25*ipStable + 0.20*tlsScore
+
+Weight redistribution when phases skipped:
+- WS skipped: 0.294×U + 0.294×L + 0.176×J + 0.235×S
+- Security skipped: 0.3125×U + 0.3125×L + 0.1875×J + 0.1875×WS
+- Both skipped (Sprint 1/2 compat): 0.385×U + 0.385×L + 0.230×J
+
+Grades: A (≥0.90) | B (≥0.75) | C (≥0.60) | D (≥0.40) | F (<0.40)
+```
+
+### Database Data (Sprint 3)
+
+| Table | Sprint 3 Data |
+|-------|---------------|
+| `ws_sample` | Populated (WS/WSS connections with RTT, drops, hold, disconnect reason) |
+| `ip_check_result` | Populated (observed IP, geo match, blacklist, stability) |
+| `run_summary` | Extended with ws_*, ip_*, score_ws, score_security fields |
+
+### Build Verified (2026-02-26)
+
+```
+Go build:        go build ./...     → clean
+API TypeScript:  tsc --noEmit       → clean
+Target TS:       tsc --noEmit       → clean
+Dashboard:       next build         → clean (all routes)
+Docker:          5 containers       → all healthy
+API endpoints:   POST/GET ws-samples, ip-checks, summary → all working
+Target WS echo:  connect + echo + hold timer → working (code 1000)
+```
+
+---
+
+## Known Limitations (Sprint 3)
+
+1. **Charts/Export**: Not implemented (Sprint 4)
+2. **Provider comparison**: No side-by-side comparison (Sprint 4)
+3. **Error log viewer**: Not implemented (Sprint 4)
+4. **External proxies**: Require ngrok or public IP to expose Target service
+5. **No charts**: Run detail shows tables only, recharts added in Sprint 4
 
 ---
 

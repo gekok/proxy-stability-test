@@ -37,7 +37,7 @@ A comprehensive proxy stability testing system that evaluates **static residenti
 
 | Service | Language | Port(s) | Role |
 |---------|----------|---------|------|
-| **Runner** | Go | :9090 | Long-running test engine. 4 goroutines per proxy: HTTP, HTTPS, WS, Summary |
+| **Runner** | Go | :9090 | Long-running test engine. 7 goroutines per proxy: HTTP, HTTPS, WS, WS-collector, Burst, Summary, Reporter |
 | **API** | Node.js/TypeScript (Express) | :8000 | Controller API. CRUD providers/proxies/runs, trigger Runner, serve results |
 | **Target** | Node.js/TypeScript | :3001 (HTTP), :3443 (HTTPS) | Self-hosted target service. Endpoints: /echo, /ip, /large, /slow, /health, /ws-echo |
 | **Dashboard** | Next.js 14 + Tailwind CSS | :3000 | UI for managing providers/proxies, starting tests, viewing results/charts |
@@ -208,18 +208,18 @@ proxy-stability-test/
 │   └── migrations/
 │       └── 001_initial_schema.sql
 │
-├── runner/                             # Go - ~16 files
+├── runner/                             # Go - 17 files
 │   ├── cmd/runner/main.go
 │   ├── internal/
 │   │   ├── server/handler.go
 │   │   ├── config/config.go
 │   │   ├── proxy/                      # dialer, http_tester, https_tester, ws_tester, tls_inspector
-│   │   ├── ipcheck/                    # blacklist (DNSBL), geoip (ip-api.com)
-│   │   ├── engine/                     # orchestrator, scheduler, result_collector
-│   │   ├── reporter/                   # api_reporter, db_reporter
-│   │   ├── scoring/scorer.go
-│   │   └── domain/types.go
-│   ├── go.mod / go.sum
+│   │   ├── ipcheck/                    # blacklist (DNSBL 4 servers), geoip (ip-api.com)
+│   │   ├── engine/                     # orchestrator (7 goroutines), scheduler, result_collector
+│   │   ├── reporter/                   # api_reporter (HTTP/WS/IP/summary), db_reporter
+│   │   ├── scoring/scorer.go           # 5-component scoring with weight redistribution
+│   │   └── domain/types.go             # HTTPSample, WSSample, IPCheckResult, RunSummary, BurstConfig
+│   ├── go.mod / go.sum                 # gorilla/websocket v1.5.3
 │   └── Dockerfile
 │
 ├── api/                                # Node.js/TypeScript - ~15 files
@@ -236,18 +236,18 @@ proxy-stability-test/
 │   ├── src/
 │   │   ├── index.ts                    # HTTP (:3001) + HTTPS (:3443)
 │   │   ├── routes/                     # echo, ip, large, slow, health
-│   │   └── ws/wsEcho.ts               # WebSocket echo + ping/pong
+│   │   └── ws/wsEcho.ts               # WebSocket echo + ping/pong 10s + hold timer
 │   ├── certs/                          # Self-signed TLS
 │   ├── package.json / tsconfig.json
 │   └── Dockerfile
 │
-└── dashboard/                          # Next.js 14 + Tailwind CSS - ~53 files (Sprint 2)
+└── dashboard/                          # Next.js 14 + Tailwind CSS - ~56 files (Sprint 3)
     ├── src/
     │   ├── app/                        # Pages: overview, providers, runs, run detail
     │   │   ├── page.tsx                # Overview (stat cards, active runs, recent results)
     │   │   ├── providers/page.tsx      # Provider CRUD with inline proxy expansion
     │   │   ├── runs/page.tsx           # Runs list with status filter tabs
-    │   │   └── runs/[runId]/page.tsx   # Run detail with realtime polling
+    │   │   └── runs/[runId]/page.tsx   # Run detail (4 tabs: HTTP/WS/IP/Score, realtime polling 3s)
     │   ├── lib/                        # api-client (fetch wrapper), logger (pino)
     │   ├── hooks/                      # 5 hooks: usePolling, useProviders, useProxies, useRuns, useRunDetail
     │   ├── components/
@@ -256,15 +256,16 @@ proxy-stability-test/
     │   │   ├── providers/              # ProviderList, ProviderForm, DeleteProviderDialog
     │   │   ├── proxies/                # ProxyList, ProxyForm, ProxyCard, DeleteProxyDialog
     │   │   ├── test/                   # ProxySelector, TestConfigForm, StartTestDialog
-    │   │   ├── runs/                   # RunHeader, RunSummaryCards, RunMetricsDetail, RunHttpSamples, etc.
+    │   │   ├── runs/                   # RunHeader, RunSummaryCards (6), RunMetricsDetail (5-comp),
+    │   │   │                           #   RunHttpSamples, RunWSSamples, RunIPCheck, RunScoreBreakdown, etc.
     │   │   └── overview/               # StatCards, ActiveRunsList, RecentResultsList
-    │   └── types/index.ts
+    │   └── types/index.ts              # +WsSample, +IPCheckResult
     ├── tailwind.config.ts / postcss.config.js
     ├── package.json / tsconfig.json
     └── Dockerfile                      # Multi-stage: deps → builder → runner (standalone)
 ```
 
-**Total: ~115 files** across all services (Sprint 1 + Sprint 2).
+**Total: ~93 source files** across all services (Sprint 1 + Sprint 2 + Sprint 3).
 
 ## Development Roadmap
 
@@ -272,7 +273,7 @@ proxy-stability-test/
 |--------|--------|-------|-----------------|
 | **1** | **DONE** | Foundation | Target (HTTP+HTTPS), API CRUD, Runner HTTP/HTTPS testers, Engine, Reporter, Scorer (3 components), E2E |
 | **2** | **DONE** | Dashboard UI | Next.js setup, Tailwind CSS, API client + hooks, Provider/Proxy CRUD, Start/Stop flow, Runs list, Run detail, Overview |
-| **3** | Not started | WS + Security | WS tester, IP check (DNSBL + GeoIP), Multi-proxy scheduler (max 10), Burst test, Scoring (5 components) |
+| **3** | **DONE** | WS + Security | WS echo rewrite, WS/WSS tester (gorilla/websocket), IP check (DNSBL + GeoIP), Burst test, Scoring (5 components), API WS/IP endpoints, Dashboard 4 tabs |
 | **4** | Not started | Advanced Dashboard | recharts charts, Export JSON/CSV, Provider comparison (radar chart), Error log viewer |
 
 ## Database Schema

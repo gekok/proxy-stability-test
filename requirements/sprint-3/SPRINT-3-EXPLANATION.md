@@ -1,5 +1,7 @@
 # Giải thích Sprint 3 — WebSocket + IP Check + Parallel
 
+**Status: DONE** (2026-02-26)
+
 ---
 
 ## 0. Sprint 3 làm gì?
@@ -489,11 +491,24 @@ Kiểm tra log đúng format:
 
 Sprint 3 biến hệ thống từ **"test cơ bản 1 proxy"** thành **"test toàn diện 10 proxies song song"**:
 
-1. **WebSocket testing** — test ws + wss xen kẽ, echo 60 msg/phút, ping/pong, reconnection
-2. **IP verification** — blacklist check (4 servers) + GeoIP country match + IP stability
-3. **Multi-proxy parallel** — 10 proxies chạy cùng lúc, panic recovery, proxy isolation
+1. **WebSocket testing** — test ws + wss xen kẽ, echo 60 msg/phút, ping/pong, reconnection (gorilla/websocket v1.5.3)
+2. **IP verification** — blacklist check (4 DNSBL servers) + GeoIP country match (ip-api.com) + IP stability
+3. **Multi-proxy parallel** — isolated context per run, proper stop isolation
 4. **Burst test** — 100 requests đồng thời mỗi 5 phút, phát hiện throttle/rate limit
-5. **Scoring 5 components** — Uptime + Latency + Jitter + WS + Security, grade A-F
-6. **Dashboard upgrade** — WS tab, IP tab, Score breakdown, multi-proxy display
-7. **54 log points mới** — debug được mọi module mới (WS 26, IP 8, Scheduler 5, Burst 2, Scoring 4, Target 6, Dashboard 3)
-8. **21 files** — Sprint 3 tạo 21 files (6 mới + 15 sửa)
+5. **Scoring 5 components** — Uptime(25%) + Latency(25%) + Jitter(15%) + WS(15%) + Security(20%), grade A-F, auto weight redistribution
+6. **Dashboard upgrade** — 6 summary cards, 4 tabs (HTTP/WS/IP/Score), score breakdown với visual bars
+7. **API endpoints** — WS batch insert, IP check insert, paginated GET ws-samples (protocol filter), GET ip-checks
+8. **21 files** — Sprint 3: 6 mới + 15 sửa = 21 files
+
+### Implementation verified (2026-02-26)
+
+```
+✓ Go build clean (gorilla/websocket v1.5.3)
+✓ API TypeScript clean
+✓ Target TypeScript clean
+✓ Dashboard next build clean (all routes)
+✓ Docker: 5 containers healthy
+✓ API: POST/GET ws-samples, ip-checks, summary all working
+✓ Target WS: connect + echo + hold timer + close code 1000
+✓ DB: ws_sample, ip_check_result, run_summary (ws/ip/score fields) populated
+```
