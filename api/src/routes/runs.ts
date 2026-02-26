@@ -92,22 +92,25 @@ runsRouter.get('/', async (req: Request, res: Response, next: NextFunction) => {
     const params: any[] = [];
     let idx = 1;
 
-    if (proxyId) { conditions.push(`proxy_id = $${idx++}`); params.push(proxyId); }
-    if (status) { conditions.push(`status = $${idx++}`); params.push(status); }
+    if (proxyId) { conditions.push(`t.proxy_id = $${idx++}`); params.push(proxyId); }
+    if (status) { conditions.push(`t.status = $${idx++}`); params.push(status); }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-    const countResult = await pool.query(`SELECT COUNT(*) FROM test_run ${where}`, params);
+    const countResult = await pool.query(`SELECT COUNT(*) FROM test_run t ${where}`, params);
     const totalCount = parseInt(countResult.rows[0].count, 10);
 
-    let query: string;
     if (cursor) {
-      conditions.push(`(created_at, id) < ($${idx++}, $${idx++})`);
+      conditions.push(`(t.created_at, t.id) < ($${idx++}, $${idx++})`);
       params.push(cursor.created_at, cursor.id);
     }
     const whereWithCursor = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     params.push(limit + 1);
-    query = `SELECT * FROM test_run ${whereWithCursor} ORDER BY created_at DESC, id DESC LIMIT $${idx}`;
+    const query = `SELECT t.*, pe.label as proxy_label, p.name as provider_name
+       FROM test_run t
+       LEFT JOIN proxy_endpoint pe ON t.proxy_id = pe.id
+       LEFT JOIN provider p ON pe.provider_id = p.id
+       ${whereWithCursor} ORDER BY t.created_at DESC, t.id DESC LIMIT $${idx}`;
 
     const result = await pool.query(query, params);
     res.json(buildPaginationResponse(result.rows, limit, totalCount));
@@ -119,7 +122,14 @@ runsRouter.get('/', async (req: Request, res: Response, next: NextFunction) => {
 // GET /api/v1/runs/:id
 runsRouter.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await pool.query('SELECT * FROM test_run WHERE id = $1', [req.params.id]);
+    const result = await pool.query(
+      `SELECT t.*, pe.label as proxy_label, p.name as provider_name
+       FROM test_run t
+       LEFT JOIN proxy_endpoint pe ON t.proxy_id = pe.id
+       LEFT JOIN provider p ON pe.provider_id = p.id
+       WHERE t.id = $1`,
+      [req.params.id],
+    );
     if (result.rows.length === 0) {
       logger.warn({ module: 'routes.runs', resource_type: 'run', resource_id: req.params.id }, 'Not found');
       return res.status(404).json({ error: { message: 'Run not found' } });

@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply text-gray-900 antialiased;
+  }
+}
+
+@layer components {
+  .score-cell {
+    @apply font-mono text-sm font-semibold;
+  }
+  .score-good { @apply text-green-600; }
+  .score-warning { @apply text-yellow-600; }
+  .score-bad { @apply text-red-600; }
+}

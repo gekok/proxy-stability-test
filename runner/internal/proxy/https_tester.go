@@ -42,7 +42,7 @@ func NewHTTPSTester(proxy domain.ProxyConfig, runID string, rpm int, timeoutMS i
 	ratePerSec := float64(rpm) / 60.0
 	limiter := rate.NewLimiter(rate.Limit(ratePerSec), 1)
 
-	// Parse target host:port from URL (e.g., https://target:3443)
+	// Parse target host:port from URL (e.g., https://target:3443 or https://abc.ngrok-free.dev)
 	targetHost := "target"
 	targetPort := 3443
 	if strings.Contains(baseURL, "://") {
@@ -52,6 +52,14 @@ func NewHTTPSTester(proxy domain.ProxyConfig, runID string, rpm int, timeoutMS i
 			targetHost = h
 			if pn, err := strconv.Atoi(p); err == nil {
 				targetPort = pn
+			}
+		} else {
+			// No port in URL — use default port based on scheme
+			targetHost = hostPort
+			if strings.HasPrefix(baseURL, "https://") {
+				targetPort = 443
+			} else {
+				targetPort = 80
 			}
 		}
 	}

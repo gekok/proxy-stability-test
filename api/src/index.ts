@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import pinoHttp from 'pino-http';
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from './logger';
@@ -8,6 +9,12 @@ import './db/pool'; // Initialize pool on startup
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '8000', 10);
+
+// CORS — allow Dashboard (:3000) to call API (:8000)
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+  credentials: true,
+}));
 
 // Body parsing
 app.use(express.json({ limit: '10mb' }));
