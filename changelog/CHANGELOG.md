@@ -482,6 +482,41 @@ Ghi lại toàn bộ quá trình phát triển project, từ lên plan đến im
 
 ---
 
+### v4.0 — Sprint 2 Implementation Complete
+
+**Toàn bộ Sprint 2 (Dashboard UI) đã implement và E2E verified với real proxies.**
+
+**Dashboard (47 new files):**
+- Project setup: Tailwind CSS 3.4, PostCSS, globals.css, multi-stage Dockerfile
+- Layout: Fixed sidebar with 3 nav items (Overview, Providers, Test Runs)
+- 11 UI components: Button (4 variants), Badge (6 variants + pulse), Card, Input, Select, Table (generic), Modal (ESC + click outside), ConfirmDialog, LoadingSpinner, ErrorAlert, EmptyState
+- API client: Fetch wrapper with timeout, error classification (4xx/5xx/timeout/unreachable), suppressNotFound option, structured console.* logging
+- TypeScript types: Provider, Proxy, TestRun, RunSummary, HttpSample, RunConfig + helpers (getScoreColor, getScoreGrade, formatDuration)
+- 5 hooks: usePolling (generic interval), useProviders (CRUD), useProxies (CRUD + password_changed), useRuns (status filter), useRunDetail (parallel fetch + stopRun)
+- Providers page: Table with inline expandable proxy rows (ProviderRow sub-component using React Fragment), add/edit/delete modals
+- Proxies: CRUD forms, password masking ("Leave blank to keep"), grouped by provider
+- Start test: 3-step modal (select proxies → configure RPM/timeout → create runs + trigger → redirect)
+- Runs list: Status filter tabs (All/Running/Stopping/Completed/Failed), auto-poll 5s, Suspense boundary for useSearchParams
+- Run detail: Realtime polling 3s, 4 summary cards (Score/Latency/Uptime/Samples), percentiles table, protocol breakdown, scoring breakdown, HTTP samples table with filter
+- Overview: 3 stat cards (Providers/Proxies/Active Tests with pulse), active runs list, recent results
+
+**API fixes (3 files modified):**
+- Added CORS middleware (`cors` package) for Dashboard :3000 → API :8000
+- Added proxy_label + provider_name JOINs to GET /runs and GET /runs/:id
+- Added `@types/cors` dev dependency
+
+**Runner fix (1 file modified):**
+- HTTPS tester: Handle target URLs without explicit port (net.SplitHostPort fallback for ngrok/external URLs — default :443 for HTTPS, :80 for HTTP)
+
+**E2E Verified with real proxies:**
+- Provider: TunProxy (tunproxy.com), 2 VN residential proxies
+- HTTP: 200 OK, TTFB ~300ms
+- HTTPS: CONNECT tunnel success, TLS 1.3, total ~600-1000ms
+- Target exposed via ngrok tunnel
+- Both proxies running in parallel confirmed
+
+---
+
 ### v2.1 — Project Structure Tree Update
 
 ### Fixed

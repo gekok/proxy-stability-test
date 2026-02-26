@@ -29,7 +29,7 @@ A proxy stability testing system that evaluates **static residential proxies** (
 - **Dashboard**: Next.js 14, React, Tailwind CSS, `recharts` (Sprint 4), client-side `console.*` logging
 - **Database**: PostgreSQL with `uuid-ossp` extension
 
-## Current Directory Structure (Sprint 1 — 68 files)
+## Current Directory Structure (Sprint 2 — ~115 files)
 
 ```
 proxy-stability-test/
@@ -85,7 +85,7 @@ proxy-stability-test/
 │
 ├── api/                                ← Node.js/TypeScript — 14 files
 │   ├── src/
-│   │   ├── index.ts                    # Express :8000, pino-http
+│   │   ├── index.ts                    # Express :8000, pino-http, CORS
 │   │   ├── logger.ts
 │   │   ├── db/pool.ts
 │   │   ├── types/index.ts
@@ -93,7 +93,7 @@ proxy-stability-test/
 │   │   │   ├── index.ts
 │   │   │   ├── providers.ts            # CRUD /api/v1/providers
 │   │   │   ├── proxies.ts             # CRUD + AES-256-GCM encryption
-│   │   │   ├── runs.ts                # CRUD + trigger + batch samples + summary
+│   │   │   ├── runs.ts                # CRUD + trigger + batch samples + summary + JOINs
 │   │   │   ├── results.ts
 │   │   │   └── export.ts              # Placeholder (Sprint 4)
 │   │   ├── services/
@@ -123,23 +123,51 @@ proxy-stability-test/
 │   ├── tsconfig.json
 │   └── Dockerfile
 │
-└── dashboard/                          ← Next.js 14 — 6 files (placeholder)
-    ├── src/app/layout.tsx
-    ├── src/app/page.tsx                # "Dashboard coming in Sprint 2"
-    ├── next.config.js
+└── dashboard/                          ← Next.js 14 + Tailwind CSS — ~53 files (Sprint 2)
+    ├── tailwind.config.ts              # Score colors, pulse-slow animation
+    ├── postcss.config.js
+    ├── .env.local.example
+    ├── src/
+    │   ├── app/
+    │   │   ├── layout.tsx              # Root layout + Sidebar
+    │   │   ├── page.tsx                # Overview (stat cards, active runs, recent results)
+    │   │   ├── globals.css             # @tailwind directives + score utilities
+    │   │   ├── error.tsx               # Global error boundary
+    │   │   ├── providers/page.tsx      # Provider CRUD + inline proxy expansion
+    │   │   ├── runs/page.tsx           # Runs list + status filter (Suspense)
+    │   │   └── runs/[runId]/page.tsx   # Run detail (realtime polling 3s)
+    │   ├── lib/
+    │   │   ├── api-client.ts           # Fetch wrapper, timeout, error classification
+    │   │   └── logger.ts               # pino (server) + console helpers (client)
+    │   ├── hooks/
+    │   │   ├── usePolling.ts           # Generic polling with interval + enabled
+    │   │   ├── useProviders.ts         # Provider CRUD
+    │   │   ├── useProxies.ts           # Proxy CRUD (password_changed only)
+    │   │   ├── useRuns.ts              # Runs fetch + status filter
+    │   │   └── useRunDetail.ts         # Parallel fetch + stopRun
+    │   ├── components/
+    │   │   ├── layout/Sidebar.tsx      # Fixed sidebar, 3 nav items
+    │   │   ├── ui/                     # 11 components: Button, Badge, Card, Input, Select, Table, Modal, ConfirmDialog, LoadingSpinner, ErrorAlert, EmptyState
+    │   │   ├── providers/              # ProviderList (expandable rows), ProviderForm, DeleteProviderDialog
+    │   │   ├── proxies/                # ProxyList, ProxyForm, ProxyCard, DeleteProxyDialog
+    │   │   ├── test/                   # ProxySelector, TestConfigForm, StartTestDialog
+    │   │   ├── runs/                   # RunHeader, RunSummaryCards, RunMetricsDetail, RunHttpSamples, RunsList, RunsFilter, RunStatusBadge, StopTestButton
+    │   │   └── overview/               # StatCards, ActiveRunsList, RecentResultsList
+    │   └── types/index.ts              # Provider, Proxy, TestRun, RunSummary, HttpSample, helpers
+    ├── next.config.js                  # standalone output + API rewrites
     ├── package.json
     ├── tsconfig.json
-    └── Dockerfile
+    └── Dockerfile                      # Multi-stage: deps → builder → runner
 ```
 
 ## Sprint Overview
 
-| Sprint | Scope | Key Deliverables |
-|--------|-------|-----------------|
-| **1** | Foundation | Target service (HTTP+HTTPS), API CRUD, Runner HTTP/HTTPS testers, Engine (orchestrator, scheduler, result collector), Reporter, Scorer (3 components), E2E |
-| **2** | Dashboard UI | Next.js setup, API client + hooks, Provider/Proxy CRUD pages, Start/Stop test flow, Runs list, Run detail, Overview page, E2E |
-| **3** | WS + Security | WS echo full impl, WS/WSS tester (gorilla/websocket), IP check (DNSBL + GeoIP), Multi-proxy scheduler (max 10), Burst test (100 goroutines), Scoring upgrade (3→5 components), E2E |
-| **4** | Advanced Dashboard | recharts charts (Latency, Uptime, ScoreGauge, ScoreHistory), Export JSON/CSV, Provider comparison (radar chart), Error log viewer, E2E |
+| Sprint | Status | Scope | Key Deliverables |
+|--------|--------|-------|-----------------|
+| **1** | **DONE** | Foundation | Target service (HTTP+HTTPS), API CRUD, Runner HTTP/HTTPS testers, Engine (orchestrator, scheduler, result collector), Reporter, Scorer (3 components), E2E |
+| **2** | **DONE** | Dashboard UI | Next.js + Tailwind setup, API client + hooks, Provider/Proxy CRUD pages, Start/Stop test flow, Runs list, Run detail, Overview page, CORS, E2E with real proxies |
+| **3** | Not started | WS + Security | WS echo full impl, WS/WSS tester (gorilla/websocket), IP check (DNSBL + GeoIP), Multi-proxy scheduler (max 10), Burst test (100 goroutines), Scoring upgrade (3→5 components), E2E |
+| **4** | Not started | Advanced Dashboard | recharts charts (Latency, Uptime, ScoreGauge, ScoreHistory), Export JSON/CSV, Provider comparison (radar chart), Error log viewer, E2E |
 
 ## Key Conventions
 

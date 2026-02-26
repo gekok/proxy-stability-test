@@ -9,7 +9,7 @@ Last updated: 2026-02-26
 | Sprint | Status | Scope |
 |--------|--------|-------|
 | **Sprint 1** | **DONE** | Foundation — Target, API, Runner, Engine, Reporter, Scorer |
-| Sprint 2 | Not started | Dashboard UI — CRUD pages, Start/Stop flow, Run detail |
+| **Sprint 2** | **DONE** | Dashboard UI — CRUD pages, Start/Stop flow, Run detail, Overview |
 | Sprint 3 | Not started | WebSocket + IP Check + Multi-proxy scheduler + Burst |
 | Sprint 4 | Not started | Charts, Export, Compare, Error log viewer |
 
@@ -25,7 +25,7 @@ Last updated: 2026-02-26
 | Target | 3001 (HTTP), 3443 (HTTPS) | Healthy | node:20-alpine |
 | API | 8000 | OK | node:20-alpine |
 | Runner | 9090 | OK | golang:1.22-alpine → alpine:3.19 |
-| Dashboard | 3000 | Running (placeholder) | node:20-alpine |
+| Dashboard | 3000 | Running (full UI) | node:20-alpine |
 
 ### Database (7 tables)
 
@@ -109,15 +109,68 @@ Grades: A (≥0.90) | B (≥0.75) | C (≥0.60) | D (≥0.40) | F (<0.40)
 
 ---
 
-## Known Limitations (Sprint 1)
+## Sprint 2 — Completed (2026-02-26)
 
-1. **Dashboard**: Placeholder only — "Dashboard coming in Sprint 2"
-2. **WebSocket**: Goroutine exists but placeholder (Sprint 3)
-3. **IP Check**: Placeholder (Sprint 3)
-4. **Scoring**: 3 components only (Sprint 3 adds WS + Security = 5)
-5. **Multi-proxy**: Single proxy only (Sprint 3 adds max 10 parallel)
-6. **Charts/Export**: Not implemented (Sprint 4)
-7. **HTTPS testing**: Requires real proxy for CONNECT tunnel to work
+### Dashboard (47 new files)
+
+| Component | Files | Key Files |
+|-----------|-------|-----------|
+| Setup | 7 | tailwind.config.ts, postcss.config.js, globals.css, Dockerfile, .env.local.example, error.tsx, logger.ts |
+| Layout | 1 | Sidebar.tsx (fixed sidebar, 3 nav items) |
+| UI Components | 11 | Button, Badge, Card, Input, Select, Table, Modal, ConfirmDialog, LoadingSpinner, ErrorAlert, EmptyState |
+| API + Types | 2 | api-client.ts (fetch wrapper, timeout, error classification), types/index.ts |
+| Hooks | 5 | usePolling, useProviders, useProxies, useRuns, useRunDetail |
+| Provider Page | 4 | page.tsx, ProviderList, ProviderForm, DeleteProviderDialog |
+| Proxy Components | 4 | ProxyList, ProxyForm, ProxyCard, DeleteProxyDialog |
+| Start Test | 3 | ProxySelector, TestConfigForm, StartTestDialog (3-step modal) |
+| Runs List | 4 | page.tsx, RunsList, RunsFilter, RunStatusBadge |
+| Run Detail | 6 | page.tsx, RunHeader, RunSummaryCards, RunMetricsDetail, RunHttpSamples, StopTestButton |
+| Overview | 3 | StatCards, ActiveRunsList, RecentResultsList |
+
+### API Fixes for Dashboard Integration
+
+| Fix | File | Detail |
+|-----|------|--------|
+| CORS middleware | api/src/index.ts | Allow Dashboard :3000 → API :8000 cross-origin |
+| Runs JOIN | api/src/routes/runs.ts | GET /runs and GET /runs/:id now return proxy_label, provider_name |
+| cors package | api/package.json | Added `cors` + `@types/cors` |
+
+### Runner Fix
+
+| Fix | File | Detail |
+|-----|------|--------|
+| HTTPS target URL parsing | runner/internal/proxy/https_tester.go | Handle URLs without explicit port (e.g., ngrok URLs) — default to :443 for HTTPS, :80 for HTTP |
+
+### External Proxy Testing
+
+Requires ngrok (or public IP) to expose Target service to external proxies:
+- Set `TARGET_HTTP_URL` and `TARGET_HTTPS_URL` in `.env` to ngrok tunnel URLs
+- Restart `docker compose up -d api runner`
+
+### E2E Verified with Real Proxies (2026-02-26)
+
+```
+Provider: TunProxy (tunproxy.com)
+Proxies: VN-SNVT2 (snvt2.tunproxy.com), VN-SNVT9 (snvt9.tunproxy.com)
+
+VN-SNVT2: HTTP 200 OK ✓ | HTTPS CONNECT+TLS 1.3 ✓ | TTFB ~300ms | Total ~600-1000ms
+VN-SNVT9: HTTP 200 OK ✓ | HTTPS CONNECT+TLS 1.3 ✓ | Running in parallel
+
+Target exposed via ngrok tunnel (free tier).
+Scoring: 3 components (Uptime 38.5% + Latency 38.5% + Jitter 23.0%)
+```
+
+---
+
+## Known Limitations (Sprint 2)
+
+1. **WebSocket**: Goroutine exists but placeholder (Sprint 3)
+2. **IP Check**: Placeholder (Sprint 3)
+3. **Scoring**: 3 components only (Sprint 3 adds WS + Security = 5)
+4. **Multi-proxy**: Single proxy only (Sprint 3 adds max 10 parallel)
+5. **Charts/Export**: Not implemented (Sprint 4)
+6. **External proxies**: Require ngrok or public IP to expose Target service
+7. **No charts**: Run detail shows tables only, recharts added in Sprint 4
 
 ---
 

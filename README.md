@@ -241,31 +241,39 @@ proxy-stability-test/
 │   ├── package.json / tsconfig.json
 │   └── Dockerfile
 │
-├── dashboard/                          # Next.js 14 - ~75 files
-│   ├── src/
-│   │   ├── app/                        # Pages: overview, providers, runs, run detail, compare
-│   │   ├── lib/                        # logger, api-client
-│   │   ├── hooks/                      # 10 custom hooks (polling, CRUD, charts, export)
-│   │   ├── components/                 # 54 React components
-│   │   └── types/index.ts
-│   ├── package.json / tsconfig.json
-│   └── Dockerfile
-│
-└── configs/                            # Sample YAML (advanced CLI mode)
-    ├── single-proxy.yaml
-    └── multi-proxy.yaml
+└── dashboard/                          # Next.js 14 + Tailwind CSS - ~53 files (Sprint 2)
+    ├── src/
+    │   ├── app/                        # Pages: overview, providers, runs, run detail
+    │   │   ├── page.tsx                # Overview (stat cards, active runs, recent results)
+    │   │   ├── providers/page.tsx      # Provider CRUD with inline proxy expansion
+    │   │   ├── runs/page.tsx           # Runs list with status filter tabs
+    │   │   └── runs/[runId]/page.tsx   # Run detail with realtime polling
+    │   ├── lib/                        # api-client (fetch wrapper), logger (pino)
+    │   ├── hooks/                      # 5 hooks: usePolling, useProviders, useProxies, useRuns, useRunDetail
+    │   ├── components/
+    │   │   ├── ui/                     # 11 reusable components (Button, Badge, Modal, Table, etc.)
+    │   │   ├── layout/                 # Sidebar
+    │   │   ├── providers/              # ProviderList, ProviderForm, DeleteProviderDialog
+    │   │   ├── proxies/                # ProxyList, ProxyForm, ProxyCard, DeleteProxyDialog
+    │   │   ├── test/                   # ProxySelector, TestConfigForm, StartTestDialog
+    │   │   ├── runs/                   # RunHeader, RunSummaryCards, RunMetricsDetail, RunHttpSamples, etc.
+    │   │   └── overview/               # StatCards, ActiveRunsList, RecentResultsList
+    │   └── types/index.ts
+    ├── tailwind.config.ts / postcss.config.js
+    ├── package.json / tsconfig.json
+    └── Dockerfile                      # Multi-stage: deps → builder → runner (standalone)
 ```
 
-**Total: ~121 files** across all services.
+**Total: ~115 files** across all services (Sprint 1 + Sprint 2).
 
 ## Development Roadmap
 
-| Sprint | Scope | Key Deliverables |
-|--------|-------|-----------------|
-| **1** | Foundation | Target (HTTP+HTTPS), API CRUD, Runner HTTP/HTTPS testers, Engine, Reporter, Scorer (3 components), E2E |
-| **2** | Dashboard UI | Next.js setup, API client + hooks, Provider/Proxy CRUD, Start/Stop flow, Runs list, Run detail, Overview |
-| **3** | WS + Security | WS tester, IP check (DNSBL + GeoIP), Multi-proxy scheduler (max 10), Burst test, Scoring (5 components) |
-| **4** | Advanced Dashboard | recharts charts, Export JSON/CSV, Provider comparison (radar chart), Error log viewer |
+| Sprint | Status | Scope | Key Deliverables |
+|--------|--------|-------|-----------------|
+| **1** | **DONE** | Foundation | Target (HTTP+HTTPS), API CRUD, Runner HTTP/HTTPS testers, Engine, Reporter, Scorer (3 components), E2E |
+| **2** | **DONE** | Dashboard UI | Next.js setup, Tailwind CSS, API client + hooks, Provider/Proxy CRUD, Start/Stop flow, Runs list, Run detail, Overview |
+| **3** | Not started | WS + Security | WS tester, IP check (DNSBL + GeoIP), Multi-proxy scheduler (max 10), Burst test, Scoring (5 components) |
+| **4** | Not started | Advanced Dashboard | recharts charts, Export JSON/CSV, Provider comparison (radar chart), Error log viewer |
 
 ## Database Schema
 
@@ -333,6 +341,23 @@ docker compose logs runner | jq 'select(.proxy_label == "BrightData-VN-1")'
 | Version history | `changelog/CHANGELOG.md` |
 | Project status & changes | `changelog/STATUS.md` |
 | AI development context | `CLAUDE.md` |
+
+## External Proxy Testing
+
+When testing with real external proxies, the Target service must be accessible from the internet.
+Use [ngrok](https://ngrok.com) to create a tunnel:
+
+```bash
+# Start ngrok tunnel to Target HTTP port
+ngrok http 3001
+
+# Update .env with the ngrok URL
+TARGET_HTTP_URL=https://<your-ngrok-url>.ngrok-free.dev
+TARGET_HTTPS_URL=https://<your-ngrok-url>.ngrok-free.dev
+
+# Restart API + Runner
+docker compose up -d api runner
+```
 
 ## License
 
