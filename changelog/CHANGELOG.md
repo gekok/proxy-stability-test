@@ -433,6 +433,55 @@ Ghi lại toàn bộ quá trình phát triển project, từ lên plan đến im
 ### Added
 - `CLAUDE.md` — project context file for AI-assisted development
 
+## 2026-02-26 — Implementation Phase
+
+### v3.0 — Sprint 1 Implementation Complete
+
+**Toàn bộ Sprint 1 (9 tasks) đã implement và E2E verified.**
+
+**Infrastructure:**
+- `docker-compose.yml` — 5 services: postgres (port 5433), target, api, runner, dashboard
+- `.env` / `.env.example` — DB: postgres/123, ENCRYPTION_KEY, all service URLs
+- `.gitignore` — node_modules, dist, .env, pgdata, Go binaries, TLS certs
+- `database/schema.sql` + `migrations/001_initial_schema.sql` — 7 tables + uuid-ossp
+
+**Target Service (10 files):**
+- HTTP (:3001) + HTTPS (:3443) with self-signed TLS certs
+- Routes: /echo (ALL methods), /ip, /large (streaming), /slow (delay), /health
+- WebSocket echo with ping/pong
+- pino structured logging
+
+**Controller API (14 files):**
+- Express :8000, pino-http middleware
+- CRUD: providers, proxies (AES-256-GCM encryption), runs
+- Batch sample ingestion (POST /runs/:id/http-samples/batch, max 100)
+- Summary upsert (ON CONFLICT), cursor-based pagination
+- Run lifecycle: create → trigger Runner → receive results → stop
+
+**Go Runner (14 files):**
+- HTTP server :9090, graceful shutdown (SIGTERM/SIGINT)
+- HTTP tester: 500 RPM, 6-method rotation, /large + /slow every 10th batch, IP check every 30s
+- HTTPS tester: CONNECT tunnel, TLS handshake, 3-phase measurement
+- Engine: 5-phase orchestrator, single-proxy scheduler, result collector (P50/P95/P99)
+- Reporter: API reporter with 3x retry + exponential backoff
+- Scorer: 3-component (0.385×Uptime + 0.385×Latency + 0.230×Jitter), grades A-F
+
+**Dashboard (6 files):**
+- Next.js 14 placeholder — "Dashboard coming in Sprint 2"
+
+**Port changes vs plan:**
+- Runner: :8081 → :9090
+- API: :3000 → :8000
+- Dashboard: :3002 → :3000
+- PostgreSQL Docker: host port :5433 (avoid conflict with local PG 18)
+
+**E2E Verified:**
+- Create provider → proxy → run → start → Runner tests → samples in DB → summary computed → stop → completed
+- Status flow: pending → running → stopping → completed
+- All 7 DB tables populated, scoring working
+
+---
+
 ### v2.1 — Project Structure Tree Update
 
 ### Fixed

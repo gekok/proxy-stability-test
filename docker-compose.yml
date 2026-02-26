@@ -1,0 +1,76 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "123"
+      POSTGRES_DB: proxytest
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  target:
+    build: ./target
+    ports:
+      - "3001:3001"
+      - "3443:3443"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  api:
+    build: ./api
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgres://postgres:123@postgres:5432/proxytest
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      - RUNNER_URL=http://runner:9090
+      - TARGET_HTTP_URL=${TARGET_HTTP_URL:-http://target:3001}
+      - TARGET_HTTPS_URL=${TARGET_HTTPS_URL:-https://target:3443}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      target:
+        condition: service_healthy
+
+  runner:
+    build: ./runner
+    ports:
+      - "9090:9090"
+    environment:
+      - DATABASE_URL=postgres://postgres:123@postgres:5432/proxytest
+      - API_URL=${API_URL:-http://api:8000/api/v1}
+      - RUNNER_PORT=${RUNNER_PORT:-9090}
+      - TARGET_HTTP_URL=${TARGET_HTTP_URL:-http://target:3001}
+      - TARGET_HTTPS_URL=${TARGET_HTTPS_URL:-https://target:3443}
+      - LOG_LEVEL=debug
+    depends_on:
+      postgres:
+        condition: service_healthy
+      target:
+        condition: service_healthy
+      api:
+        condition: service_started
+
+  dashboard:
+    build: ./dashboard
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
+    depends_on:
+      - api
+
+volumes:
+  pgdata:

@@ -2,31 +2,6 @@
 
 A comprehensive proxy stability testing system that evaluates **static residential proxies** (HTTP/HTTPS + WebSocket) for reliability, latency, security, and quality. Designed to select the best proxy provider for a Zalo account management system.
 
-## Table of Contents
-
-- [Key Features](#key-features)
-- [Architecture](#architecture)
-- [Tech Stack](#tech-stack)
-- [Prerequisites](#prerequisites)
-- [Quick Start](#quick-start)
-- [Usage](#usage)
-- [What Gets Tested](#what-gets-tested)
-  - [Connectivity](#connectivity)
-  - [Performance](#performance)
-  - [Stability](#stability)
-  - [Security](#security)
-  - [WebSocket](#websocket)
-- [Scoring](#scoring)
-- [Run Status Flow](#run-status-flow)
-- [Project Structure](#project-structure)
-- [Development Roadmap](#development-roadmap)
-- [Database Schema](#database-schema)
-- [Logging](#logging)
-- [Security](#security-1)
-- [Environment Variables](#environment-variables)
-- [Documentation](#documentation)
-- [License](#license)
-
 ## Key Features
 
 - **Multi-protocol testing**: HTTP, HTTPS (CONNECT tunnel), WebSocket (ws/wss)
@@ -62,11 +37,11 @@ A comprehensive proxy stability testing system that evaluates **static residenti
 
 | Service | Language | Port(s) | Role |
 |---------|----------|---------|------|
-| **Runner** | Go | :8081 | Long-running test engine. 4 goroutines per proxy: HTTP, HTTPS, WS, Summary |
-| **API** | Node.js/TypeScript (Express) | :3000 | Controller API. CRUD providers/proxies/runs, trigger Runner, serve results |
+| **Runner** | Go | :9090 | Long-running test engine. 4 goroutines per proxy: HTTP, HTTPS, WS, Summary |
+| **API** | Node.js/TypeScript (Express) | :8000 | Controller API. CRUD providers/proxies/runs, trigger Runner, serve results |
 | **Target** | Node.js/TypeScript | :3001 (HTTP), :3443 (HTTPS) | Self-hosted target service. Endpoints: /echo, /ip, /large, /slow, /health, /ws-echo |
-| **Dashboard** | Next.js 14 + Tailwind CSS | :3002 | UI for managing providers/proxies, starting tests, viewing results/charts |
-| **PostgreSQL** | PostgreSQL | :5432 | 7 tables: provider, proxy_endpoint, test_run, http_sample, ws_sample, run_summary, ip_check_result |
+| **Dashboard** | Next.js 14 + Tailwind CSS | :3000 | UI for managing providers/proxies, starting tests, viewing results/charts |
+| **PostgreSQL** | PostgreSQL 16 (Docker) | :5433 (host) → :5432 (container) | 7 tables: provider, proxy_endpoint, test_run, http_sample, ws_sample, run_summary, ip_check_result |
 
 ## Tech Stack
 
@@ -99,7 +74,7 @@ openssl rand -hex 32
 docker compose up -d
 
 # 5. Open the dashboard
-# http://localhost:3002
+# http://localhost:3000
 ```
 
 ## Usage
@@ -341,11 +316,11 @@ docker compose logs runner | jq 'select(.proxy_label == "BrightData-VN-1")'
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `ENCRYPTION_KEY` | 32-byte hex key for password encryption | `openssl rand -hex 32` |
-| `DATABASE_URL` | PostgreSQL connection string | `postgresql://user:pass@postgres:5432/proxytest` |
-| `RUNNER_URL` | Runner service URL | `http://runner:8081` |
+| `DATABASE_URL` | PostgreSQL connection string | `postgres://postgres:123@postgres:5432/proxytest` |
+| `RUNNER_URL` | Runner service URL | `http://runner:9090` |
 | `TARGET_HTTP_URL` | Target HTTP URL | `http://target:3001` |
 | `TARGET_HTTPS_URL` | Target HTTPS URL | `https://target:3443` |
-| `NEXT_PUBLIC_API_URL` | API URL for Dashboard | `http://localhost:3000/api/v1` |
+| `NEXT_PUBLIC_API_URL` | API URL for Dashboard | `http://localhost:8000/api/v1` |
 
 ## Documentation
 
@@ -356,6 +331,7 @@ docker compose logs runner | jq 'select(.proxy_label == "BrightData-VN-1")'
 | Sprint N tasks & acceptance criteria | `requirements/sprint-N/SPRINT-N-PLAN.md` |
 | Sprint N explanation | `requirements/sprint-N/SPRINT-N-EXPLANATION.md` |
 | Version history | `changelog/CHANGELOG.md` |
+| Project status & changes | `changelog/STATUS.md` |
 | AI development context | `CLAUDE.md` |
 
 ## License

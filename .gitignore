@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+go.sum
+
+# Build outputs
+dist/
+.next/
+out/
+
+# Environment
+.env
+.env.local
+
+# Database
+pgdata/
+
+# Go binaries
+runner/runner
+*.exe
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# TLS certs (generated)
+target/certs/server.key
+target/certs/server.crt
+
+# Logs
+*.log
+
+# Temp
+tmp/
+.tmp/

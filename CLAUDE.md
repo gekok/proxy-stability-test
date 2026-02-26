@@ -15,11 +15,11 @@ A proxy stability testing system that evaluates **static residential proxies** (
 
 | Service | Language | Port(s) | Role |
 |---------|----------|---------|------|
-| **Runner** | Go | :8081 | Long-running test engine. 4 goroutines per proxy: HTTP, HTTPS, WS, Summary. Receives trigger from API. |
-| **API** | Node.js/TypeScript (Express) | :3000 | Controller API. CRUD providers/proxies/runs, trigger Runner, serve results. |
+| **Runner** | Go | :9090 | Long-running test engine. 4 goroutines per proxy: HTTP, HTTPS, WS, Summary. Receives trigger from API. |
+| **API** | Node.js/TypeScript (Express) | :8000 | Controller API. CRUD providers/proxies/runs, trigger Runner, serve results. |
 | **Target** | Node.js/TypeScript | :3001 (HTTP), :3443 (HTTPS) | Self-hosted target service. Endpoints: /echo, /ip, /large, /slow, /health, /ws-echo. |
-| **Dashboard** | Next.js 14 + Tailwind CSS | :3002 | UI for managing providers/proxies, starting tests, viewing results/charts. |
-| **PostgreSQL** | PostgreSQL | :5432 | DB: provider, proxy_endpoint, test_run, http_sample, ws_sample, run_summary, ip_check_result |
+| **Dashboard** | Next.js 14 + Tailwind CSS | :3000 | UI for managing providers/proxies, starting tests, viewing results/charts. |
+| **PostgreSQL** | PostgreSQL 16 (Docker) | :5433 (host) → :5432 (container) | DB: provider, proxy_endpoint, test_run, http_sample, ws_sample, run_summary, ip_check_result |
 
 ## Tech Stack
 
@@ -29,160 +29,107 @@ A proxy stability testing system that evaluates **static residential proxies** (
 - **Dashboard**: Next.js 14, React, Tailwind CSS, `recharts` (Sprint 4), client-side `console.*` logging
 - **Database**: PostgreSQL with `uuid-ossp` extension
 
-## Directory Structure (~121 files)
+## Current Directory Structure (Sprint 1 — 68 files)
 
 ```
 proxy-stability-test/
-├── docker-compose.yml
+├── docker-compose.yml                  # 4 services + postgres (port 5433)
 ├── .env.example
+├── .env                                # Local config (gitignored)
 ├── .gitignore
 ├── CLAUDE.md                           ← This file
+├── README.md
+├── changelog/STATUS.md                 # Project status & change log
 │
 ├── requirements/                       ← Planning documents (10 files)
-│   ├── PROXY-TEST-PLAN.md              ← Main plan: DB schema, architecture, logging spec, full file tree
-│   ├── PLAN-EXPLANATION.md             ← Non-technical explanation of main plan
-│   ├── sprint-1/
-│   │   ├── SPRINT-1-PLAN.md            ← 9 tasks: Target, API, Runner HTTP/HTTPS, Engine, Reporter, Scorer, E2E
-│   │   └── SPRINT-1-EXPLANATION.md
-│   ├── sprint-2/
-│   │   ├── SPRINT-2-PLAN.md            ← 9 tasks: Dashboard setup, API client, CRUD pages, Start/Stop flow, E2E
-│   │   └── SPRINT-2-EXPLANATION.md
-│   ├── sprint-3/
-│   │   ├── SPRINT-3-PLAN.md            ← 9 tasks: WS echo, WS tester, IP check, Scheduler, Burst, Scoring, API, UI, E2E
-│   │   └── SPRINT-3-EXPLANATION.md
-│   └── sprint-4/
-│       ├── SPRINT-4-PLAN.md            ← 8 tasks: Charts, Export, Compare, Error viewer, E2E
-│       └── SPRINT-4-EXPLANATION.md
+│   ├── PROXY-TEST-PLAN.md
+│   ├── PLAN-EXPLANATION.md
+│   ├── sprint-1/SPRINT-1-PLAN.md
+│   ├── sprint-1/SPRINT-1-EXPLANATION.md
+│   ├── sprint-2/SPRINT-2-PLAN.md
+│   ├── sprint-2/SPRINT-2-EXPLANATION.md
+│   ├── sprint-3/SPRINT-3-PLAN.md
+│   ├── sprint-3/SPRINT-3-EXPLANATION.md
+│   ├── sprint-4/SPRINT-4-PLAN.md
+│   └── sprint-4/SPRINT-4-EXPLANATION.md
 │
 ├── changelog/
-│   └── CHANGELOG.md                    ← Full version history (v0.1 → v2.1)
+│   └── CHANGELOG.md
 │
 ├── database/                           ← 2 files
-│   ├── migrations/
-│   │   └── 001_initial_schema.sql
-│   └── schema.sql                      # Full consolidated schema
+│   ├── schema.sql                      # 7 tables + uuid-ossp
+│   └── migrations/001_initial_schema.sql
 │
-├── runner/                             ← Go — ~16 files
-│   ├── cmd/runner/main.go              # HTTP server chờ lệnh + CLI mode
+├── runner/                             ← Go — 14 files
+│   ├── cmd/runner/main.go              # HTTP server :9090, graceful shutdown
 │   ├── internal/
-│   │   ├── server/handler.go           # HTTP endpoint nhận trigger từ API
-│   │   ├── config/config.go            # Config parser
+│   │   ├── server/handler.go           # POST /trigger, POST /stop, GET /health
+│   │   ├── config/config.go
+│   │   ├── domain/types.go
 │   │   ├── proxy/
-│   │   │   ├── dialer.go               # TCP connect qua proxy
-│   │   │   ├── http_tester.go          # Plain HTTP test goroutine
-│   │   │   ├── https_tester.go         # HTTPS qua CONNECT tunnel goroutine
-│   │   │   ├── ws_tester.go            # WebSocket ws+wss goroutine
-│   │   │   └── tls_inspector.go        # TLS version/cipher
-│   │   ├── ipcheck/
-│   │   │   ├── blacklist.go            # DNSBL lookup (4 servers)
-│   │   │   └── geoip.go               # Geo verification (ip-api.com)
+│   │   │   ├── dialer.go               # TCP connect + CONNECT tunnel
+│   │   │   ├── http_tester.go          # HTTP test goroutine (500 RPM)
+│   │   │   ├── https_tester.go         # HTTPS via CONNECT tunnel (500 RPM)
+│   │   │   └── tls_inspector.go        # TLS version/cipher extraction
 │   │   ├── engine/
-│   │   │   ├── orchestrator.go         # Rate control, warmup, phased execution, burst
-│   │   │   ├── scheduler.go            # Multi-proxy scheduling (max 10)
-│   │   │   └── result_collector.go     # Aggregate samples, compute summary
+│   │   │   ├── orchestrator.go         # 5-phase lifecycle per proxy
+│   │   │   ├── scheduler.go            # Single proxy (Sprint 1)
+│   │   │   └── result_collector.go     # Percentiles, summary computation
 │   │   ├── reporter/
-│   │   │   ├── api_reporter.go         # POST kết quả tới API
-│   │   │   └── db_reporter.go          # Insert trực tiếp vào PostgreSQL
-│   │   ├── scoring/scorer.go           # 5-component scoring + weight redistribution
-│   │   └── domain/types.go             # Shared structs
+│   │   │   ├── api_reporter.go         # POST batches to API
+│   │   │   └── db_reporter.go          # Direct DB insert (placeholder)
+│   │   └── scoring/scorer.go           # 3-component scoring (Sprint 1)
 │   ├── go.mod
 │   ├── go.sum
 │   └── Dockerfile
 │
-├── api/                                ← Node.js/TypeScript — ~15 files
+├── api/                                ← Node.js/TypeScript — 14 files
 │   ├── src/
-│   │   ├── index.ts                    # Express app, mount routes, pino-http
-│   │   ├── logger.ts                   # pino logger { service: "api" }
-│   │   ├── db/pool.ts                  # PostgreSQL connection pool
+│   │   ├── index.ts                    # Express :8000, pino-http
+│   │   ├── logger.ts
+│   │   ├── db/pool.ts
+│   │   ├── types/index.ts
 │   │   ├── routes/
-│   │   │   ├── index.ts               # Route registration
+│   │   │   ├── index.ts
 │   │   │   ├── providers.ts            # CRUD /api/v1/providers
-│   │   │   ├── proxies.ts             # CRUD /api/v1/proxies
-│   │   │   ├── runs.ts                # CRUD /api/v1/runs + trigger + stop
-│   │   │   ├── results.ts            # GET samples, summary, ip-checks
-│   │   │   └── export.ts              # GET /runs/:id/export, GET /providers/compare
+│   │   │   ├── proxies.ts             # CRUD + AES-256-GCM encryption
+│   │   │   ├── runs.ts                # CRUD + trigger + batch samples + summary
+│   │   │   ├── results.ts
+│   │   │   └── export.ts              # Placeholder (Sprint 4)
 │   │   ├── services/
-│   │   │   ├── runService.ts           # Run lifecycle, trigger, status
-│   │   │   ├── scoringService.ts       # Score computation helpers
-│   │   │   └── exportService.ts        # JSON/CSV export, provider comparison
-│   │   ├── middleware/
-│   │   │   ├── pagination.ts           # Cursor-based pagination
-│   │   │   └── errorHandler.ts         # Global error handler
-│   │   └── types/index.ts              # Shared TypeScript types
+│   │   │   ├── runService.ts
+│   │   │   └── scoringService.ts       # Placeholder
+│   │   └── middleware/
+│   │       ├── pagination.ts           # Cursor-based
+│   │       └── errorHandler.ts
 │   ├── package.json
+│   ├── package-lock.json
 │   ├── tsconfig.json
 │   └── Dockerfile
 │
-├── target/                             ← Node.js/TypeScript — ~13 files
+├── target/                             ← Node.js/TypeScript — 10 files
 │   ├── src/
-│   │   ├── index.ts                    # HTTP (:3001) + HTTPS (:3443) servers
+│   │   ├── index.ts                    # HTTP :3001 + HTTPS :3443
 │   │   ├── routes/
-│   │   │   ├── echo.ts                 # ALL methods /echo
-│   │   │   ├── ip.ts                   # GET /ip
-│   │   │   ├── large.ts                # GET /large?size=N
-│   │   │   ├── slow.ts                 # GET /slow?delay=N
+│   │   │   ├── echo.ts                 # ALL methods
+│   │   │   ├── ip.ts
+│   │   │   ├── large.ts                # Streaming response
+│   │   │   ├── slow.ts                 # Delayed response
 │   │   │   └── health.ts
-│   │   └── ws/wsEcho.ts                # WebSocket echo + ping/pong + hold
-│   ├── certs/                          # Self-signed TLS (sibling of src/, NOT nested)
-│   │   ├── generate-cert.sh            # openssl cert generation script
-│   │   ├── server.key
-│   │   └── server.crt
+│   │   └── ws/wsEcho.ts                # WebSocket echo
+│   ├── certs/generate-cert.sh          # Auto-gen in Dockerfile
 │   ├── package.json
+│   ├── package-lock.json
 │   ├── tsconfig.json
 │   └── Dockerfile
 │
-├── dashboard/                          ← Next.js 14 — ~75 files
-│   ├── next.config.js
-│   ├── tailwind.config.ts
-│   ├── postcss.config.js
-│   ├── .env.local.example
-│   ├── package.json                    # react, next, tailwindcss, recharts
-│   ├── tsconfig.json
-│   ├── Dockerfile
-│   └── src/
-│       ├── app/                        # Pages (8 files)
-│       │   ├── layout.tsx              # Root layout: Sidebar + content
-│       │   ├── globals.css
-│       │   ├── error.tsx               # Global error boundary
-│       │   ├── page.tsx                # Overview
-│       │   ├── providers/page.tsx      # Provider + proxy management
-│       │   ├── runs/page.tsx           # Runs list + status filter
-│       │   ├── runs/[runId]/page.tsx   # Run detail: summary, charts, samples, errors
-│       │   └── compare/page.tsx        # Provider comparison (radar chart)
-│       ├── lib/                        # Utilities (2 files)
-│       │   ├── logger.ts               # pino + console helpers
-│       │   └── api-client.ts           # Fetch wrapper, error handling, 9 log points
-│       ├── types/index.ts              # TypeScript types matching DB schema
-│       ├── hooks/                      # React hooks (10 files)
-│       │   ├── usePolling.ts           # Generic polling (interval, pause/resume)
-│       │   ├── useProviders.ts         # CRUD providers
-│       │   ├── useProxies.ts           # CRUD proxies by provider
-│       │   ├── useRuns.ts              # Runs + WS samples + IP checks
-│       │   ├── useRunDetail.ts         # Single run detail + polling
-│       │   ├── useChartData.ts         # Time-bucket aggregation
-│       │   ├── useSummaryHistory.ts    # Sliding window 200 snapshots
-│       │   ├── useCompare.ts           # Provider comparison data
-│       │   ├── useExport.ts            # Blob download (JSON/CSV)
-│       │   └── useErrorLogs.ts         # Fetch + merge + filter errors
-│       └── components/                 # React components (54 files)
-│           ├── layout/Sidebar.tsx
-│           ├── ui/                     # Reusable (11): Button, Badge, Card, Input, Select,
-│           │                           #   Table, LoadingSpinner, ErrorAlert, EmptyState, Modal, ConfirmDialog
-│           ├── providers/              # (3): ProviderList, ProviderForm, DeleteProviderDialog
-│           ├── proxies/                # (4): ProxyList, ProxyForm, ProxyCard, DeleteProxyDialog
-│           ├── test/                   # (3): ProxySelector, TestConfigForm, StartTestDialog
-│           ├── runs/                   # (14): RunsList, RunsFilter, RunStatusBadge, RunHeader,
-│           │                           #   RunSummaryCards, RunMetricsDetail, RunHttpSamples,
-│           │                           #   RunWSSamples, RunIPCheck, RunScoreBreakdown,
-│           │                           #   StopTestButton, ExportButton, ErrorLogViewer, ErrorLogFilters
-│           ├── compare/                # (3): ProviderSelect, RadarCompareChart, ComparisonTable
-│           ├── charts/                 # (8): ChartContainer, ChartTooltip, ChartErrorBoundary,
-│           │                           #   chart-utils, LatencyChart, UptimeTimeline, ScoreGauge, ScoreHistoryChart
-│           └── overview/               # (3): StatCards, ActiveRunsList, RecentResultsList
-│
-└── configs/                            # Sample YAML (advanced CLI mode)
-    ├── single-proxy.yaml
-    └── multi-proxy.yaml
+└── dashboard/                          ← Next.js 14 — 6 files (placeholder)
+    ├── src/app/layout.tsx
+    ├── src/app/page.tsx                # "Dashboard coming in Sprint 2"
+    ├── next.config.js
+    ├── package.json
+    ├── tsconfig.json
+    └── Dockerfile
 ```
 
 ## Sprint Overview
