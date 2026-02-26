@@ -43,6 +43,19 @@ export function RunMetricsDetail({ summary, run }: RunMetricsDetailProps) {
       : null)
     : null;
 
+  const hasWS = summary.ws_sample_count > 0;
+  const hasSecurity = summary.score_security != null && summary.score_security > 0;
+
+  // Determine effective weights
+  let wU = '25%', wL = '25%', wJ = '15%', wW = '15%', wS = '20%';
+  if (!hasWS && !hasSecurity) {
+    wU = '38.5%'; wL = '38.5%'; wJ = '23.0%'; wW = '—'; wS = '—';
+  } else if (!hasWS) {
+    wU = '29.4%'; wL = '29.4%'; wJ = '17.6%'; wW = '—'; wS = '23.5%';
+  } else if (!hasSecurity) {
+    wU = '31.3%'; wL = '31.3%'; wJ = '18.8%'; wW = '18.8%'; wS = '—';
+  }
+
   return (
     <div className="space-y-4">
       <Card title="Latency Percentiles">
@@ -101,10 +114,56 @@ export function RunMetricsDetail({ summary, run }: RunMetricsDetailProps) {
                 <td className="pr-6 py-1">{formatRatio(httpsSuccessRatio)}</td>
                 <td className="pr-6 py-1">{httpsTotal}</td>
               </tr>
+              {hasWS && (
+                <tr>
+                  <td className="pr-6 py-1 text-gray-700">WebSocket</td>
+                  <td className="pr-6 py-1">
+                    {summary.ws_success_count + summary.ws_error_count > 0
+                      ? formatRatio(summary.ws_success_count / (summary.ws_success_count + summary.ws_error_count))
+                      : '—'}
+                  </td>
+                  <td className="pr-6 py-1">{summary.ws_sample_count}</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
       </Card>
+
+      {hasWS && (
+        <Card title="WebSocket Metrics">
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="text-left text-gray-500">
+                  <th className="pr-6 py-1">Metric</th>
+                  <th className="pr-6 py-1">Value</th>
+                </tr>
+              </thead>
+              <tbody className="font-mono">
+                <tr>
+                  <td className="pr-6 py-1 text-gray-700">RTT Average</td>
+                  <td className="pr-6 py-1">{formatMs(summary.ws_rtt_avg_ms)}</td>
+                </tr>
+                <tr>
+                  <td className="pr-6 py-1 text-gray-700">RTT P95</td>
+                  <td className="pr-6 py-1">{formatMs(summary.ws_rtt_p95_ms)}</td>
+                </tr>
+                <tr>
+                  <td className="pr-6 py-1 text-gray-700">Drop Rate</td>
+                  <td className="pr-6 py-1">{formatRatio(summary.ws_drop_rate)}</td>
+                </tr>
+                <tr>
+                  <td className="pr-6 py-1 text-gray-700">Avg Hold Duration</td>
+                  <td className="pr-6 py-1">
+                    {summary.ws_avg_hold_ms != null ? `${(summary.ws_avg_hold_ms / 1000).toFixed(1)}s` : '—'}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
 
       <Card title="Scoring Breakdown">
         <div className="overflow-x-auto">
@@ -119,19 +178,33 @@ export function RunMetricsDetail({ summary, run }: RunMetricsDetailProps) {
             <tbody>
               <tr>
                 <td className="pr-6 py-1 text-gray-700">Uptime</td>
-                <td className="pr-6 py-1 text-gray-500">38.5%</td>
+                <td className="pr-6 py-1 text-gray-500">{wU}</td>
                 <td className="pr-6 py-1"><ScoreCell score={summary.score_uptime} /></td>
               </tr>
               <tr>
                 <td className="pr-6 py-1 text-gray-700">Latency</td>
-                <td className="pr-6 py-1 text-gray-500">38.5%</td>
+                <td className="pr-6 py-1 text-gray-500">{wL}</td>
                 <td className="pr-6 py-1"><ScoreCell score={summary.score_latency} /></td>
               </tr>
               <tr>
                 <td className="pr-6 py-1 text-gray-700">Jitter</td>
-                <td className="pr-6 py-1 text-gray-500">23.0%</td>
+                <td className="pr-6 py-1 text-gray-500">{wJ}</td>
                 <td className="pr-6 py-1"><ScoreCell score={summary.score_jitter} /></td>
               </tr>
+              {(hasWS || wW !== '—') && (
+                <tr>
+                  <td className="pr-6 py-1 text-gray-700">WebSocket</td>
+                  <td className="pr-6 py-1 text-gray-500">{wW}</td>
+                  <td className="pr-6 py-1"><ScoreCell score={summary.score_ws} /></td>
+                </tr>
+              )}
+              {(hasSecurity || wS !== '—') && (
+                <tr>
+                  <td className="pr-6 py-1 text-gray-700">Security</td>
+                  <td className="pr-6 py-1 text-gray-500">{wS}</td>
+                  <td className="pr-6 py-1"><ScoreCell score={summary.score_security} /></td>
+                </tr>
+              )}
               <tr className="border-t font-semibold">
                 <td className="pr-6 py-1 text-gray-900">Total</td>
                 <td className="pr-6 py-1 text-gray-500">100%</td>
@@ -140,9 +213,6 @@ export function RunMetricsDetail({ summary, run }: RunMetricsDetailProps) {
             </tbody>
           </table>
         </div>
-        <p className="text-xs text-gray-400 mt-2">
-          Sprint 2: 3 components (Uptime, Latency, Jitter). WS + Security added in Sprint 3.
-        </p>
       </Card>
     </div>
   );

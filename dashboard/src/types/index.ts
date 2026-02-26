@@ -165,6 +165,48 @@ export interface HttpSample {
   measured_at: string;
 }
 
+// === WS Sample ===
+export interface WsSample {
+  id: string;
+  run_id: string;
+  seq: number;
+  target_url: string;
+  connected: boolean;
+  error_type: string | null;
+  error_message: string | null;
+  tcp_connect_ms: number | null;
+  tls_handshake_ms: number | null;
+  handshake_ms: number | null;
+  message_rtt_ms: number | null;
+  connection_held_ms: number | null;
+  disconnect_reason: string | null;
+  messages_sent: number;
+  messages_received: number;
+  drop_count: number;
+  measured_at: string;
+}
+
+// === IP Check Result ===
+export interface IPCheckResult {
+  id: string;
+  run_id: string;
+  proxy_id: string;
+  observed_ip: string;
+  expected_country: string | null;
+  actual_country: string | null;
+  actual_region: string | null;
+  actual_city: string | null;
+  geo_match: boolean | null;
+  blacklist_checked: boolean;
+  blacklists_queried: number;
+  blacklists_listed: number;
+  blacklist_sources: string[];
+  is_clean: boolean | null;
+  ip_stable: boolean | null;
+  ip_changes: number;
+  checked_at: string;
+}
+
 // === Default Config ===
 export const DEFAULT_RUN_CONFIG: RunConfig = {
   http_rpm: 500,

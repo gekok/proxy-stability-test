@@ -185,6 +185,62 @@ func (c *ResultCollector) ComputeSummary(allSamples []domain.HTTPSample) domain.
 	return summary
 }
 
+// ComputeWSSummary fills in WS metrics on an existing RunSummary
+func (c *ResultCollector) ComputeWSSummary(summary *domain.RunSummary, wsSamples []domain.WSSample) {
+	if len(wsSamples) == 0 {
+		return
+	}
+
+	summary.WSSampleCount = len(wsSamples)
+
+	var successCount, errorCount int
+	var rtts []float64
+	var holdTimes []float64
+	var totalDrops, totalSent int
+
+	for _, ws := range wsSamples {
+		if ws.Connected {
+			successCount++
+		} else {
+			errorCount++
+		}
+		if ws.MessageRTTMS > 0 {
+			rtts = append(rtts, ws.MessageRTTMS)
+		}
+		if ws.ConnectionHeldMS > 0 {
+			holdTimes = append(holdTimes, ws.ConnectionHeldMS)
+		}
+		totalDrops += ws.DropCount
+		totalSent += ws.MessagesSent
+	}
+
+	summary.WSSuccessCount = successCount
+	summary.WSErrorCount = errorCount
+
+	if len(rtts) > 0 {
+		summary.WSRTTAvgMS = mean(rtts)
+		summary.WSRTTP95MS = percentile(rtts, 95)
+	}
+
+	if totalSent > 0 {
+		summary.WSDropRate = float64(totalDrops) / float64(totalSent)
+	}
+
+	if len(holdTimes) > 0 {
+		summary.WSAvgHoldMS = mean(holdTimes)
+	}
+
+	c.logger.Info("WS summary computed",
+		"phase", "continuous",
+		"run_id", c.runID,
+		"ws_sample_count", len(wsSamples),
+		"ws_success_count", successCount,
+		"ws_error_count", errorCount,
+		"ws_rtt_avg_ms", summary.WSRTTAvgMS,
+		"ws_drop_rate", summary.WSDropRate,
+	)
+}
+
 // --- Math helpers ---
 
 func mean(data []float64) float64 {

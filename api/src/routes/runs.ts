@@ -246,14 +246,92 @@ runsRouter.post('/:id/http-samples/batch', async (req: Request, res: Response, n
   }
 });
 
-// POST /api/v1/runs/:id/ws-samples/batch — Placeholder
-runsRouter.post('/:id/ws-samples/batch', async (_req: Request, res: Response) => {
-  res.status(201).json({ inserted: 0, message: 'WS samples not implemented in Sprint 1' });
+// POST /api/v1/runs/:id/ws-samples/batch — Batch insert WS samples
+runsRouter.post('/:id/ws-samples/batch', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { samples } = req.body;
+
+    if (!samples || !Array.isArray(samples) || samples.length === 0) {
+      logger.error({ module: 'routes.runs', run_id: req.params.id, first_error: 'samples array is required' }, 'WS batch validation fail');
+      return res.status(400).json({ error: { message: 'samples array is required' } });
+    }
+
+    if (samples.length > 100) {
+      return res.status(400).json({ error: { message: 'Maximum 100 samples per batch' } });
+    }
+
+    const runId = req.params.id;
+
+    const values: any[] = [];
+    const placeholders: string[] = [];
+    let idx = 1;
+
+    for (const s of samples) {
+      placeholders.push(`($${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++})`);
+      values.push(
+        runId, s.seq || 0, s.is_warmup || false, s.target_url || '',
+        s.connected || false, s.error_type || null, s.error_message || null,
+        s.tcp_connect_ms || null, s.tls_handshake_ms || null, s.handshake_ms || null,
+        s.message_rtt_ms || null, s.connection_held_ms || null, s.disconnect_reason || null,
+        s.messages_sent || 0, s.messages_received || 0, s.drop_count || 0,
+      );
+    }
+
+    await pool.query(
+      `INSERT INTO ws_sample (run_id, seq, is_warmup, target_url, connected, error_type, error_message, tcp_connect_ms, tls_handshake_ms, handshake_ms, message_rtt_ms, connection_held_ms, disconnect_reason, messages_sent, messages_received, drop_count)
+       VALUES ${placeholders.join(', ')}`,
+      values,
+    );
+
+    // Update total_ws_samples counter
+    await pool.query(
+      `UPDATE test_run SET total_ws_samples = total_ws_samples + $2 WHERE id = $1`,
+      [runId, samples.length],
+    );
+
+    logger.info({ module: 'routes.runs', run_id: runId, table: 'ws_sample', count: samples.length }, 'WS batch ingestion');
+    res.status(201).json({ inserted: samples.length });
+  } catch (err) {
+    next(err);
+  }
 });
 
-// POST /api/v1/runs/:id/ip-checks — Placeholder
-runsRouter.post('/:id/ip-checks', async (_req: Request, res: Response) => {
-  res.status(201).json({ inserted: 0, message: 'IP checks not implemented in Sprint 1' });
+// POST /api/v1/runs/:id/ip-checks — Insert IP check result
+runsRouter.post('/:id/ip-checks', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const s = req.body;
+    const runId = req.params.id;
+
+    // Get proxy_id from run
+    const runResult = await pool.query('SELECT proxy_id FROM test_run WHERE id = $1', [runId]);
+    if (runResult.rows.length === 0) {
+      return res.status(404).json({ error: { message: 'Run not found' } });
+    }
+    const proxyId = runResult.rows[0].proxy_id;
+
+    const result = await pool.query(
+      `INSERT INTO ip_check_result (
+        run_id, proxy_id, observed_ip, expected_country, actual_country, actual_region, actual_city,
+        geo_match, blacklist_checked, blacklists_queried, blacklists_listed, blacklist_sources,
+        is_clean, ip_stable, ip_changes
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      RETURNING *`,
+      [
+        runId, proxyId,
+        s.observed_ip, s.expected_country || null, s.actual_country || null,
+        s.actual_region || null, s.actual_city || null,
+        s.geo_match ?? null, s.blacklist_checked || false,
+        s.blacklists_queried || 0, s.blacklists_listed || 0,
+        JSON.stringify(s.blacklist_sources || []),
+        s.is_clean ?? null, s.ip_stable ?? null, s.ip_changes || 0,
+      ],
+    );
+
+    logger.info({ module: 'routes.runs', run_id: runId, observed_ip: s.observed_ip, is_clean: s.is_clean, geo_match: s.geo_match }, 'IP check ingestion');
+    res.status(201).json({ data: result.rows[0] });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // POST /api/v1/runs/:id/summary — Upsert run summary
@@ -387,6 +465,57 @@ runsRouter.get('/:id/http-samples', async (req: Request, res: Response, next: Ne
     // Adapt for pagination (use measured_at as created_at for cursor)
     const rows = result.rows.map((r: any) => ({ ...r, created_at: r.measured_at }));
     res.json(buildPaginationResponse(rows, limit, totalCount));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/v1/runs/:id/ws-samples
+runsRouter.get('/:id/ws-samples', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { limit, cursor } = parsePagination(req);
+    const runId = req.params.id;
+    const protocol = req.query.protocol as string; // 'ws' or 'wss'
+
+    const conditions: string[] = ['run_id = $1'];
+    const params: any[] = [runId];
+    let idx = 2;
+
+    if (protocol === 'ws') {
+      conditions.push(`target_url LIKE 'ws://%'`);
+    } else if (protocol === 'wss') {
+      conditions.push(`target_url LIKE 'wss://%'`);
+    }
+
+    const where = conditions.join(' AND ');
+
+    const countResult = await pool.query(`SELECT COUNT(*) FROM ws_sample WHERE ${where}`, params);
+    const totalCount = parseInt(countResult.rows[0].count, 10);
+
+    if (cursor) {
+      conditions.push(`(measured_at, id) < ($${idx++}, $${idx++})`);
+      params.push(cursor.created_at, cursor.id);
+    }
+
+    params.push(limit + 1);
+    const query = `SELECT * FROM ws_sample WHERE ${conditions.join(' AND ')} ORDER BY measured_at DESC, id DESC LIMIT $${idx}`;
+
+    const result = await pool.query(query, params);
+    const rows = result.rows.map((r: any) => ({ ...r, created_at: r.measured_at }));
+    res.json(buildPaginationResponse(rows, limit, totalCount));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/v1/runs/:id/ip-checks
+runsRouter.get('/:id/ip-checks', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM ip_check_result WHERE run_id = $1 ORDER BY checked_at DESC',
+      [req.params.id],
+    );
+    res.json({ data: result.rows });
   } catch (err) {
     next(err);
   }

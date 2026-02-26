@@ -2,12 +2,14 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { apiClient } from '@/lib/api-client';
-import { TestRun, RunSummary, HttpSample } from '@/types';
+import { TestRun, RunSummary, HttpSample, WsSample, IPCheckResult } from '@/types';
 
 export function useRunDetail(runId: string) {
   const [run, setRun] = useState<TestRun | null>(null);
   const [summary, setSummary] = useState<RunSummary | null>(null);
   const [samples, setSamples] = useState<HttpSample[]>([]);
+  const [wsSamples, setWsSamples] = useState<WsSample[]>([]);
+  const [ipChecks, setIpChecks] = useState<IPCheckResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const previousStatusRef = useRef<string | null>(null);
@@ -15,7 +17,7 @@ export function useRunDetail(runId: string) {
 
   const fetchRunDetail = useCallback(async () => {
     try {
-      const [runRes, summaryRes, samplesRes] = await Promise.all([
+      const [runRes, summaryRes, samplesRes, wsRes, ipRes] = await Promise.all([
         apiClient.get<TestRun>(`/runs/${runId}`),
         apiClient.get<RunSummary>(`/runs/${runId}/summary`, undefined, { suppressNotFound: true })
           .catch((err) => {
@@ -37,12 +39,18 @@ export function useRunDetail(runId: string) {
             }
             return { data: [] };
           }),
+        apiClient.get<WsSample[]>(`/runs/${runId}/ws-samples`, { limit: '50' }, { suppressNotFound: true })
+          .catch(() => ({ data: [] })),
+        apiClient.get<IPCheckResult[]>(`/runs/${runId}/ip-checks`, undefined, { suppressNotFound: true })
+          .catch(() => ({ data: [] })),
       ]);
 
       const newRun = runRes.data;
       setRun(newRun);
       setSummary(summaryRes.data as RunSummary | null);
       setSamples((samplesRes.data || []) as HttpSample[]);
+      setWsSamples((wsRes.data || []) as WsSample[]);
+      setIpChecks((ipRes.data || []) as IPCheckResult[]);
       setError(null);
       setLoading(false);
 
@@ -103,5 +111,5 @@ export function useRunDetail(runId: string) {
 
   const isActive = run?.status === 'running' || run?.status === 'stopping';
 
-  return { run, summary, samples, loading, error, fetchRunDetail, stopRun, isActive };
+  return { run, summary, samples, wsSamples, ipChecks, loading, error, fetchRunDetail, stopRun, isActive };
 }

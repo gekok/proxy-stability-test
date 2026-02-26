@@ -2,13 +2,21 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
+	"net/url"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/sync/errgroup"
 
 	"proxy-stability-test/runner/internal/domain"
+	"proxy-stability-test/runner/internal/ipcheck"
 	"proxy-stability-test/runner/internal/proxy"
 	"proxy-stability-test/runner/internal/reporter"
 	"proxy-stability-test/runner/internal/scoring"
@@ -16,13 +24,16 @@ import (
 
 // Orchestrator manages the lifecycle of testing a single proxy
 type Orchestrator struct {
-	config      domain.RunConfig
-	httpTester  *proxy.HTTPTester
-	httpsTester *proxy.HTTPSTester
-	collector   *ResultCollector
-	reporter    reporter.Reporter
-	logger      *slog.Logger
-	allSamples  []domain.HTTPSample // accumulated for summary
+	config       domain.RunConfig
+	httpTester   *proxy.HTTPTester
+	httpsTester  *proxy.HTTPSTester
+	wsTester     *proxy.WSTester
+	collector    *ResultCollector
+	reporter     reporter.Reporter
+	logger       *slog.Logger
+	allSamples   []domain.HTTPSample  // accumulated for summary
+	allWSSamples []domain.WSSample    // accumulated for WS summary
+	ipResult     *domain.IPCheckResult // IP check result
 }
 
 // NewOrchestrator creates a new orchestrator for a proxy test run
@@ -71,16 +82,29 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		"connect_ms", connectMS.Milliseconds(),
 	)
 
-	// Phase 1: IP check (placeholder in Sprint 1)
-	o.logger.Info("IP check start (placeholder)",
+	// Phase 1: IP check
+	o.logger.Info("IP check start",
 		"phase", "ip_check",
 	)
-	o.logger.Info("IP check complete (placeholder)",
-		"phase", "ip_check",
-	)
+	ipResult := o.runIPCheck(ctx)
+	if ipResult != nil {
+		o.ipResult = ipResult
+		o.reporter.ReportIPCheck(o.config.RunID, *ipResult)
+		o.logger.Info("IP check complete",
+			"phase", "ip_check",
+			"observed_ip", ipResult.ObservedIP,
+			"is_clean", ipResult.IsClean,
+			"geo_match", ipResult.GeoMatch,
+		)
+	} else {
+		o.logger.Warn("IP check skipped (could not determine IP)",
+			"phase", "ip_check",
+		)
+	}
 
-	// Setup sample channel and collector
+	// Setup sample channels and collector
 	sampleChan := make(chan domain.HTTPSample, 1000)
+	wsSampleChan := make(chan domain.WSSample, 200)
 	o.collector = NewResultCollector(o.config.RunID, o.logger)
 
 	// Create testers
@@ -94,6 +118,10 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 	o.httpsTester = proxy.NewHTTPSTester(
 		o.config.Proxy, o.config.RunID, o.config.HTTPSRPM,
 		o.config.RequestTimeoutMS, httpsBaseURL, sampleChan, o.logger,
+	)
+	o.wsTester = proxy.NewWSTester(
+		o.config.Proxy, o.config.RunID, o.config.WSMessagesPerMin,
+		o.config.RequestTimeoutMS, httpBaseURL, httpsBaseURL, wsSampleChan, o.logger,
 	)
 
 	// Phase 2: Warmup
@@ -156,18 +184,14 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		return o.httpsTester.Run(gCtx)
 	})
 
-	// Goroutine 3: WS placeholder
+	// Goroutine 3: WS tester
 	g.Go(func() error {
-		o.logger.Info("WS goroutine started (placeholder)",
-			"phase", "continuous",
-			"goroutine", "ws",
-		)
-		<-gCtx.Done()
-		o.logger.Info("WS goroutine stopped (placeholder)",
-			"phase", "stopping",
-			"goroutine", "ws",
-		)
-		return nil
+		return o.wsTester.Run(gCtx)
+	})
+
+	// Goroutine 5b: Collect WS samples from channel → batch report
+	g.Go(func() error {
+		return o.collectAndReportWS(gCtx, wsSampleChan)
 	})
 
 	// Goroutine 4: Rolling summary
@@ -175,12 +199,17 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		return o.rollingSummary(gCtx)
 	})
 
-	// Goroutine 5: Collect samples from channel → batch report
+	// Goroutine 6: Burst test (every 5 minutes)
+	g.Go(func() error {
+		return o.runBurstLoop(gCtx, sampleChan)
+	})
+
+	// Goroutine 7: Collect samples from channel → batch report
 	g.Go(func() error {
 		return o.collectAndReport(gCtx, sampleChan)
 	})
 
-	o.logger.Info("All 4 goroutines running",
+	o.logger.Info("All goroutines running",
 		"phase", "continuous",
 	)
 
@@ -198,6 +227,12 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 	)
 
 	summary := o.collector.ComputeSummary(o.allSamples)
+	o.collector.ComputeWSSummary(&summary, o.allWSSamples)
+	if o.ipResult != nil {
+		summary.IPClean = &o.ipResult.IsClean
+		summary.IPGeoMatch = &o.ipResult.GeoMatch
+		summary.IPStable = &o.ipResult.IPStable
+	}
 	scoring.ComputeScore(&summary)
 
 	o.logger.Info("Final summary computed",
@@ -205,7 +240,10 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		"final_score", summary.ScoreTotal,
 		"total_http_samples", summary.HTTPSampleCount,
 		"total_https_samples", summary.HTTPSSampleCount,
+		"ws_sample_count", summary.WSSampleCount,
 		"uptime_ratio", summary.UptimeRatio,
+		"score_ws", summary.ScoreWS,
+		"score_security", summary.ScoreSecurity,
 	)
 
 	o.reporter.ReportSummary(o.config.RunID, summary)
@@ -229,6 +267,12 @@ func (o *Orchestrator) rollingSummary(ctx context.Context) error {
 			return nil
 		case <-ticker.C:
 			summary := o.collector.ComputeSummary(o.allSamples)
+			o.collector.ComputeWSSummary(&summary, o.allWSSamples)
+			if o.ipResult != nil {
+				summary.IPClean = &o.ipResult.IsClean
+				summary.IPGeoMatch = &o.ipResult.GeoMatch
+				summary.IPStable = &o.ipResult.IPStable
+			}
 			scoring.ComputeScore(&summary)
 
 			o.logger.Info("Rolling summary",
@@ -237,10 +281,264 @@ func (o *Orchestrator) rollingSummary(ctx context.Context) error {
 				"score_total", summary.ScoreTotal,
 				"http_count", summary.HTTPSampleCount,
 				"https_count", summary.HTTPSSampleCount,
+				"ws_count", summary.WSSampleCount,
 				"uptime_ratio", summary.UptimeRatio,
 			)
 
 			o.reporter.ReportSummary(o.config.RunID, summary)
+		}
+	}
+}
+
+// runIPCheck performs the Phase 1 IP verification
+func (o *Orchestrator) runIPCheck(ctx context.Context) *domain.IPCheckResult {
+	// Step 1: Get observed IP via proxy
+	observedIP := o.getIPViaProxy(ctx)
+	if observedIP == "" {
+		return nil
+	}
+
+	result := &domain.IPCheckResult{
+		RunID:           o.config.RunID,
+		ProxyID:         "", // filled by API
+		ObservedIP:      observedIP,
+		ExpectedCountry: o.config.Proxy.ExpectedCountry,
+	}
+
+	// Step 2: Blacklist check
+	queried, listed, sources, err := ipcheck.CheckBlacklist(o.logger, observedIP)
+	if err != nil {
+		o.logger.Warn("Blacklist check error",
+			"phase", "ip_check",
+			"error_detail", err.Error(),
+		)
+	}
+	result.BlacklistChecked = true
+	result.BlacklistQueried = queried
+	result.BlacklistListed = listed
+	result.BlacklistSources = sources
+	result.IsClean = listed == 0
+
+	// Step 3: GeoIP verification
+	_, countryCode, region, city, err := ipcheck.CheckGeoIP(o.logger, observedIP)
+	if err != nil {
+		o.logger.Warn("GeoIP check error",
+			"phase", "ip_check",
+			"error_detail", err.Error(),
+		)
+	} else {
+		result.ActualCountry = countryCode
+		result.ActualRegion = region
+		result.ActualCity = city
+		result.GeoMatch = ipcheck.CheckGeoMatch(o.logger, o.config.Proxy.ExpectedCountry, countryCode, observedIP)
+	}
+
+	result.IPStable = true
+	result.IPChanges = 0
+
+	return result
+}
+
+// getIPViaProxy sends GET /ip through the proxy to determine the observed IP
+func (o *Orchestrator) getIPViaProxy(ctx context.Context) string {
+	proxyURL := &url.URL{
+		Scheme: "http",
+		Host:   fmt.Sprintf("%s:%d", o.config.Proxy.Host, o.config.Proxy.Port),
+	}
+	if o.config.Proxy.AuthUser != "" {
+		proxyURL.User = url.UserPassword(o.config.Proxy.AuthUser, o.config.Proxy.AuthPass)
+	}
+
+	client := &http.Client{
+		Timeout: time.Duration(o.config.RequestTimeoutMS) * time.Millisecond,
+		Transport: &http.Transport{
+			Proxy: http.ProxyURL(proxyURL),
+		},
+	}
+
+	targetURL := o.config.Target.HTTPURL + "/ip"
+	req, err := http.NewRequestWithContext(ctx, "GET", targetURL, nil)
+	if err != nil {
+		o.logger.Error("IP check request build fail",
+			"phase", "ip_check",
+			"error_detail", err.Error(),
+		)
+		return ""
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		o.logger.Error("IP check request fail",
+			"phase", "ip_check",
+			"error_detail", err.Error(),
+		)
+		return ""
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var ipResp struct {
+		IP string `json:"ip"`
+	}
+	if err := json.Unmarshal(body, &ipResp); err != nil {
+		// Try raw text
+		return strings.TrimSpace(string(body))
+	}
+	return ipResp.IP
+}
+
+// runBurstLoop runs burst tests periodically
+func (o *Orchestrator) runBurstLoop(ctx context.Context, sampleChan chan<- domain.HTTPSample) error {
+	intervalSec := 300 // default 5 minutes
+	concurrency := 100
+	if o.config.Burst != nil {
+		if o.config.Burst.IntervalSec > 0 {
+			intervalSec = o.config.Burst.IntervalSec
+		}
+		if o.config.Burst.Concurrency > 0 {
+			concurrency = o.config.Burst.Concurrency
+		}
+	}
+
+	ticker := time.NewTicker(time.Duration(intervalSec) * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			o.runBurst(ctx, concurrency, sampleChan)
+		}
+	}
+}
+
+// runBurst spawns concurrent goroutines hitting GET /echo
+func (o *Orchestrator) runBurst(ctx context.Context, count int, sampleChan chan<- domain.HTTPSample) {
+	o.logger.Info("Concurrency burst start",
+		"phase", "continuous",
+		"goroutine", "burst",
+		"concurrent_count", count,
+	)
+
+	targetURL := o.config.Target.HTTPURL + "/echo"
+
+	proxyURL := &url.URL{
+		Scheme: "http",
+		Host:   fmt.Sprintf("%s:%d", o.config.Proxy.Host, o.config.Proxy.Port),
+	}
+	if o.config.Proxy.AuthUser != "" {
+		proxyURL.User = url.UserPassword(o.config.Proxy.AuthUser, o.config.Proxy.AuthPass)
+	}
+
+	var successCount, failCount int64
+	var totalMS int64
+	var wg sync.WaitGroup
+
+	burstStart := time.Now()
+
+	for i := 0; i < count; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+
+			client := &http.Client{
+				Timeout: 10 * time.Second,
+				Transport: &http.Transport{
+					Proxy: http.ProxyURL(proxyURL),
+				},
+			}
+
+			reqStart := time.Now()
+			req, err := http.NewRequestWithContext(ctx, "GET", targetURL, nil)
+			if err != nil {
+				atomic.AddInt64(&failCount, 1)
+				return
+			}
+
+			resp, err := client.Do(req)
+			elapsed := time.Since(reqStart).Milliseconds()
+			atomic.AddInt64(&totalMS, elapsed)
+
+			if err != nil {
+				atomic.AddInt64(&failCount, 1)
+				return
+			}
+			resp.Body.Close()
+
+			if resp.StatusCode < 400 {
+				atomic.AddInt64(&successCount, 1)
+			} else {
+				atomic.AddInt64(&failCount, 1)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	burstDuration := time.Since(burstStart)
+
+	s := atomic.LoadInt64(&successCount)
+	f := atomic.LoadInt64(&failCount)
+	total := s + f
+	avgMS := float64(0)
+	if total > 0 {
+		avgMS = float64(atomic.LoadInt64(&totalMS)) / float64(total)
+	}
+
+	o.logger.Info("Concurrency burst complete",
+		"phase", "continuous",
+		"goroutine", "burst",
+		"concurrent_count", count,
+		"success_count", s,
+		"fail_count", f,
+		"avg_ms", avgMS,
+		"duration_ms", burstDuration.Milliseconds(),
+	)
+}
+
+// collectAndReportWS collects WS samples from channel and reports them in batches
+func (o *Orchestrator) collectAndReportWS(ctx context.Context, wsSampleChan <-chan domain.WSSample) error {
+	batch := make([]domain.WSSample, 0, 20)
+	batchTimeout := time.NewTicker(5 * time.Second)
+	defer batchTimeout.Stop()
+
+	flush := func() {
+		if len(batch) == 0 {
+			return
+		}
+
+		o.allWSSamples = append(o.allWSSamples, batch...)
+
+		o.logger.Debug("WS batch assembled",
+			"phase", "continuous",
+			"batch_size", len(batch),
+		)
+
+		o.reporter.ReportWSSamples(o.config.RunID, batch)
+		batch = make([]domain.WSSample, 0, 20)
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			draining := true
+			for draining {
+				select {
+				case sample := <-wsSampleChan:
+					batch = append(batch, sample)
+				default:
+					draining = false
+				}
+			}
+			flush()
+			return nil
+		case sample := <-wsSampleChan:
+			batch = append(batch, sample)
+			if len(batch) >= 20 {
+				flush()
+			}
+		case <-batchTimeout.C:
+			flush()
 		}
 	}
 }

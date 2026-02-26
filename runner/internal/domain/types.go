@@ -20,6 +20,11 @@ type TargetConfig struct {
 	HTTPSURL string `json:"https_url"`
 }
 
+type BurstConfig struct {
+	IntervalSec int `json:"interval_sec"` // seconds between bursts (default 300 = 5min)
+	Concurrency int `json:"concurrency"`  // goroutines per burst (default 100)
+}
+
 type RunConfig struct {
 	RunID              string       `json:"run_id"`
 	Proxy              ProxyConfig  `json:"proxy"`
@@ -30,6 +35,7 @@ type RunConfig struct {
 	RequestTimeoutMS   int          `json:"request_timeout_ms"`
 	WarmupRequests     int          `json:"warmup_requests"`
 	SummaryIntervalSec int          `json:"summary_interval_sec"`
+	Burst              *BurstConfig `json:"burst,omitempty"`
 }
 
 type TriggerPayload struct {
@@ -72,6 +78,44 @@ type HTTPSample struct {
 	MeasuredAt     time.Time `json:"measured_at"`
 }
 
+type WSSample struct {
+	Seq              int       `json:"seq"`
+	IsWarmup         bool      `json:"is_warmup"`
+	TargetURL        string    `json:"target_url"`
+	Connected        bool      `json:"connected"`
+	IsWSS            bool      `json:"is_wss"`
+	ErrorType        string    `json:"error_type,omitempty"`
+	ErrorMessage     string    `json:"error_message,omitempty"`
+	TCPConnectMS     float64   `json:"tcp_connect_ms"`
+	TLSHandshakeMS   float64   `json:"tls_handshake_ms,omitempty"`
+	HandshakeMS      float64   `json:"handshake_ms"`
+	MessageRTTMS     float64   `json:"message_rtt_ms"`
+	ConnectionHeldMS float64   `json:"connection_held_ms"`
+	DisconnectReason string    `json:"disconnect_reason,omitempty"`
+	MessagesSent     int       `json:"messages_sent"`
+	MessagesReceived int       `json:"messages_received"`
+	DropCount        int       `json:"drop_count"`
+	MeasuredAt       time.Time `json:"measured_at"`
+}
+
+type IPCheckResult struct {
+	RunID            string   `json:"run_id"`
+	ProxyID          string   `json:"proxy_id"`
+	ObservedIP       string   `json:"observed_ip"`
+	ExpectedCountry  string   `json:"expected_country"`
+	ActualCountry    string   `json:"actual_country"`
+	ActualRegion     string   `json:"actual_region"`
+	ActualCity       string   `json:"actual_city"`
+	GeoMatch         bool     `json:"geo_match"`
+	BlacklistChecked bool     `json:"blacklist_checked"`
+	BlacklistQueried int      `json:"blacklists_queried"`
+	BlacklistListed  int      `json:"blacklists_listed"`
+	BlacklistSources []string `json:"blacklist_sources"`
+	IsClean          bool     `json:"is_clean"`
+	IPStable         bool     `json:"ip_stable"`
+	IPChanges        int      `json:"ip_changes"`
+}
+
 type RunSummary struct {
 	RunID              string  `json:"run_id"`
 	HTTPSampleCount    int     `json:"http_sample_count"`
@@ -96,13 +140,28 @@ type RunSummary struct {
 	TCPConnectP50MS    float64 `json:"tcp_connect_p50_ms"`
 	TCPConnectP95MS    float64 `json:"tcp_connect_p95_ms"`
 	TCPConnectP99MS    float64 `json:"tcp_connect_p99_ms"`
+	// WS metrics
+	WSSuccessCount int     `json:"ws_success_count"`
+	WSErrorCount   int     `json:"ws_error_count"`
+	WSRTTAvgMS     float64 `json:"ws_rtt_avg_ms"`
+	WSRTTP95MS     float64 `json:"ws_rtt_p95_ms"`
+	WSDropRate     float64 `json:"ws_drop_rate"`
+	WSAvgHoldMS    float64 `json:"ws_avg_hold_ms"`
+	// Bytes
 	TotalBytesSent     int64   `json:"total_bytes_sent"`
 	TotalBytesReceived int64   `json:"total_bytes_received"`
 	AvgThroughputBPS   float64 `json:"avg_throughput_bps"`
-	ScoreUptime        float64 `json:"score_uptime"`
-	ScoreLatency       float64 `json:"score_latency"`
-	ScoreJitter        float64 `json:"score_jitter"`
-	ScoreTotal         float64 `json:"score_total"`
+	// IP check
+	IPClean    *bool `json:"ip_clean"`
+	IPGeoMatch *bool `json:"ip_geo_match"`
+	IPStable   *bool `json:"ip_stable"`
+	// Scores
+	ScoreUptime   float64 `json:"score_uptime"`
+	ScoreLatency  float64 `json:"score_latency"`
+	ScoreJitter   float64 `json:"score_jitter"`
+	ScoreWS       float64 `json:"score_ws"`
+	ScoreSecurity float64 `json:"score_security"`
+	ScoreTotal    float64 `json:"score_total"`
 }
 
 // MethodTarget defines an endpoint + method combination for testing

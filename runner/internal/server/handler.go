@@ -72,6 +72,7 @@ func (h *Handler) handleTrigger(w http.ResponseWriter, r *http.Request) {
 		"run_ids", runIDs(payload.Runs),
 	)
 
+	// Build configs and register individual cancel functions for isolation
 	accepted := 0
 	for _, tr := range payload.Runs {
 		cfg := config.FromTrigger(tr)
