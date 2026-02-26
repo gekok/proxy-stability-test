@@ -2,6 +2,31 @@
 
 A comprehensive proxy stability testing system that evaluates **static residential proxies** (HTTP/HTTPS + WebSocket) for reliability, latency, security, and quality. Designed to select the best proxy provider for a Zalo account management system.
 
+## Table of Contents
+
+- [Key Features](#key-features)
+- [Architecture](#architecture)
+- [Tech Stack](#tech-stack)
+- [Prerequisites](#prerequisites)
+- [Quick Start](#quick-start)
+- [Usage](#usage)
+- [What Gets Tested](#what-gets-tested)
+  - [Connectivity](#connectivity)
+  - [Performance](#performance)
+  - [Stability](#stability)
+  - [Security](#security)
+  - [WebSocket](#websocket)
+- [Scoring](#scoring)
+- [Run Status Flow](#run-status-flow)
+- [Project Structure](#project-structure)
+- [Development Roadmap](#development-roadmap)
+- [Database Schema](#database-schema)
+- [Logging](#logging)
+- [Security](#security-1)
+- [Environment Variables](#environment-variables)
+- [Documentation](#documentation)
+- [License](#license)
+
 ## Key Features
 
 - **Multi-protocol testing**: HTTP, HTTPS (CONNECT tunnel), WebSocket (ws/wss)
