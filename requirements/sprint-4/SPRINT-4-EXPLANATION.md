@@ -91,7 +91,7 @@ Compare Page (/compare):
 
 ---
 
-## 1. Có gì trong Sprint 4? (8 tasks)
+## 1. Có gì trong Sprint 4? (11 tasks)
 
 ### Nhìn nhanh
 
@@ -115,10 +115,20 @@ Compare Page (/compare):
                 │  └────────────────┘                                  │
                 │                                                      │
                 │  ★ = Sprint 4 new                                    │
+                │                                                      │
+                │  ┌────────────────┐  ┌────────────────────────────┐  │
+                │  │  Go Runner     │  │     Database                │  │
+                │  │  Scoring ★     │  │                            │  │
+                │  │                │  │  002_scoring_improvements ★│  │
+                │  │ IP re-check ★  │  │  (3 new columns)          │  │
+                │  │ IP gradient ★  │  └────────────────────────────┘  │
+                │  │ TLS scoring ★  │                                  │
+                │  │ Config ★       │                                  │
+                │  └────────────────┘                                  │
                 └──────────────────────────────────────────────────────┘
 ```
 
-### 8 Tasks theo thứ tự
+### 11 Tasks theo thứ tự
 
 | Task | Tên | Làm gì | Tại sao cần |
 |------|-----|--------|-------------|
@@ -129,27 +139,37 @@ Compare Page (/compare):
 | 5 | Comparison Page | Trang so sánh providers với radar chart | So sánh nhanh nhiều nhà cung cấp |
 | 6 | Export Download | Nút tải về JSON/CSV | Lưu kết quả về máy |
 | 7 | Error Log Viewer | Xem chi tiết từng lỗi | Debug lỗi dễ hơn |
-| 8 | E2E Test | Test toàn bộ flow | Chắc chắn mọi thứ hoạt động |
+| 9 | Scoring Engine Improvements | Nâng cấp công thức chấm điểm | IP re-check, gradient IP, TLS version, config thresholds |
+| 10 | Scoring Config — API + Dashboard | Kết nối scoring mới vào hệ thống | DB migration + API wiring + Dashboard UI |
+| 11 | E2E Test | Test toàn bộ flow + scoring | Chắc chắn mọi thứ hoạt động |
 
 ### Thứ tự dependency
 
 ```
+Track A — Charts:
 Task 1 (Chart Library)
   ├── Task 2 (Latency + Uptime charts)
   ├── Task 3 (ScoreGauge + History)
   └── Task 5 (Comparison Page) ← cần cả Task 1 + Task 4
 
+Track B — Export + Compare:
 Task 4 (API Export + Compare)
   ├── Task 5 (Comparison Page)
   └── Task 6 (Export Download)
 
+Track C — Error Viewer:
 Task 7 (Error Log Viewer) ← độc lập
 
-Task 8 (E2E Test) ← chờ tất cả tasks trên xong
+Track D — Scoring Improvements:
+Task 9 (Scoring Engine — Go Runner) ← độc lập
+  └── Task 10 (Scoring Config — API + Dashboard) ← phụ thuộc Task 9
+
+Task 11 (E2E Test) ← chờ tất cả tasks trên xong
 ```
 
-> Task 1, 4, 7 có thể làm **song song** vì không phụ thuộc nhau.
-> Task 8 (E2E test) phải chờ tất cả tasks khác hoàn thành.
+> Task 1, 4, 7, 9 có thể làm **song song** vì không phụ thuộc nhau.
+> Task 10 phụ thuộc Task 9 (scoring engine phải implement trước khi wire API + Dashboard).
+> Task 11 (E2E test) phải chờ tất cả tasks khác hoàn thành.
 
 ---
 
@@ -426,15 +446,76 @@ Protocol: All | HTTP | HTTPS | WS | WSS
 
 ---
 
-### Task 8 — E2E Integration Test
+### Task 9 — Scoring Engine Improvements (Go Runner)
 
-**Làm gì**: Test toàn bộ Sprint 4 features — charts render đúng, compare hoạt động, export tải về, error viewer hiển thị.
+**Làm gì**: Nâng cấp công thức chấm điểm trong Go Runner — 4 cải tiến quan trọng.
+
+**Giống như**: Nâng cấp bộ tiêu chí chấm bài thi — trước đây chấm đơn giản (đúng/sai), giờ chấm chi tiết hơn (đúng bao nhiêu %, dùng phương pháp nào).
+
+**4 cải tiến**:
+```
+1. IP Stability Re-check (quan trọng nhất):
+   Trước: Kiểm tra IP 1 lần đầu run → coi là "ổn định" suốt
+   Sau:   Kiểm tra IP mỗi 60 giây → phát hiện IP đổi giữa chừng
+   → Giống kiểm tra nhân viên chỉ 1 lần lúc tuyển vs. giám sát liên tục
+
+2. IP Clean Gradient (chi tiết hơn):
+   Trước: Bị blacklist 1/4 server → 0 điểm (giống bị blacklist 4/4)
+   Sau:   Bị blacklist 1/4 server → 0.75 điểm (tỷ lệ)
+   → Giống chấm thi: trước đây sai 1 câu = trượt, giờ tính điểm tỷ lệ
+
+3. TLS Version Scoring (phân biệt TLS 1.2 vs 1.3):
+   Trước: Có HTTPS = 1.0, không có = 0.0
+   Sau:   TLS 1.3 = 1.0, TLS 1.2 = 0.7, khác = 0.0
+   → TLS 1.3 mới hơn, nhanh hơn, an toàn hơn → điểm cao hơn
+
+4. Configurable Thresholds:
+   Trước: Mốc latency 500ms cố định
+   Sau:   User tùy chỉnh: "tôi chấp nhận latency 300ms" → điểm tính theo mốc 300ms
+   → Giống chỉnh điểm đỗ: trước 5.0 cố định, giờ user chọn mốc
+```
+
+**Sau Task 9**: Scoring engine thông minh hơn, kết quả chính xác hơn.
+
+---
+
+### Task 10 — Scoring Config — API + Dashboard Integration
+
+**Làm gì**: Kết nối scoring engine mới (Task 9) vào toàn bộ hệ thống — DB lưu trữ, API truyền config, Dashboard hiển thị.
+
+**Giống như**: Sau khi nâng cấp bộ chấm điểm, cần: (1) sổ điểm mới ghi thêm cột, (2) phòng thi truyền tiêu chí mới cho giám thị, (3) bảng kết quả hiển thị điểm chi tiết hơn.
+
+**3 phần**:
+```
+1. DB Migration — Sổ điểm mới:
+   Thêm 3 cột vào bảng run_summary:
+   - ip_clean_score: điểm IP gradient (0.75 thay vì 0/1)
+   - majority_tls_version: "TLS 1.3" hay "TLS 1.2"
+   - tls_version_score: điểm TLS (1.0 / 0.7 / 0.0)
+
+2. API — Truyền config:
+   Start Test nhận thêm scoring_config (thresholds):
+   { "latency_threshold_ms": 300, "jitter_threshold_ms": 50, ... }
+
+3. Dashboard — Hiển thị mới:
+   - Form bắt đầu test: thêm section "Scoring Thresholds" (thu gọn được)
+   - IP Clean: hiện thanh gradient (0.75) thay vì chỉ ✓/✗
+   - TLS Version: hiện "TLS 1.3 (1.0 điểm)" thay vì "TLS: Yes"
+```
+
+**Sau Task 10**: Toàn bộ scoring improvements hiển thị đầy đủ trên Dashboard.
+
+---
+
+### Task 11 — E2E Integration Test
+
+**Làm gì**: Test toàn bộ Sprint 4 features — charts render đúng, compare hoạt động, export tải về, error viewer hiển thị, **scoring improvements hoạt động** (IP re-check, gradient IP, TLS version, custom thresholds).
 
 **10 bước test**:
 ```
 1.  Khởi động 5 services
 2.  Tạo 2 providers + 2 proxies
-3.  Start Test cho cả 2 proxies
+3.  Start Test cho cả 2 proxies (có thể set custom thresholds)
 4.  Chờ 2-3 phút (data tích lũy)
 5.  Charts tab → xem latency + uptime charts
 6.  ScoreGauge + ScoreHistoryChart render
@@ -444,24 +525,29 @@ Protocol: All | HTTP | HTTPS | WS | WSS
 10. Errors tab → xem error log viewer
 ```
 
-**20 functional checks + 11 logging checks** — chi tiết trong `SPRINT-4-PLAN.md` Task 8.
+**24 functional checks + 14 logging checks** — chi tiết trong `SPRINT-4-PLAN.md` Task 11.
+
+> So với bản gốc: thêm 4 functional checks (IP stability updates, IP gradient display, TLS version display, custom thresholds) + 2 logging checks (DL13 IP changed WARN, DL14 custom thresholds INFO).
 
 ---
 
 ## 3. Logging trong Sprint 4
 
-### Tại sao Sprint 4 cần thêm 27 log points?
+### Tại sao Sprint 4 cần thêm 29 log points?
 
-Sprint 4 thêm nhiều UI features mới (charts, compare, export, errors) → mỗi feature cần log để debug:
+Sprint 4 thêm nhiều UI features mới (charts, compare, export, errors) + scoring improvements → mỗi feature cần log để debug:
 - Chart không render → log ở đâu? (data empty? library error? render crash?)
 - Export fail → lỗi ở server hay client? Export run rỗng (0 samples)?
 - Compare endpoint chậm → SQL query nào? Provider list fetch fail?
 - Error viewer → 1 trong 3 nguồn (HTTP/WS/IP) fetch fail → biết nguồn nào?
+- IP thay đổi giữa run → WARN log ngay lập tức
+- Custom scoring thresholds → INFO log xác nhận đang dùng config nào
 
-### 2 services, phân bổ log
+### 3 services, phân bổ log
 
 | Service | Sprint 4 logs | Ví dụ |
 |---------|--------------|-------|
+| **Runner (Go)** | 2 logs | IP changed WARN (re-check goroutine), Using custom thresholds INFO (scoring) |
 | **API (Node.js)** | 8 logs | Export endpoint (5: requested, generated, fail, zero HTTP samples, zero WS samples) + Compare endpoint (3: requested, generated, fail) |
 | **Dashboard (Next.js)** | 19 logs | Charts (6: rendered x4, empty state, error boundary), Compare page (5), Export download (3), Error viewer (3: loaded, filter, fetch fail), Score history snapshot (1) |
 
@@ -526,15 +612,17 @@ Sprint 4 thêm nhiều UI features mới (charts, compare, export, errors) → m
 
 > Mới: "Error logs fetch failed" — trước đây Promise.all fail atomic (không biết nguồn nào lỗi), giờ 3 independent fetch + log riêng từng source.
 
-### Tổng Sprint 4: 27 log points mới
+### Tổng Sprint 4: 29 log points mới
 
 | Service | Server | Client | Tổng |
 |---------|--------|--------|------|
+| Runner (Go) | 2 | 0 | 2 |
 | API (Node.js) | 8 | 0 | 8 |
 | Dashboard (Next.js) | 0 | 19 | 19 |
-| **Tổng** | **8** | **19** | **27** |
+| **Tổng** | **10** | **19** | **29** |
 
-> Runner (Go) và Target (Node.js) **KHÔNG cần thêm log** — Sprint 4 chỉ thêm features ở API + Dashboard.
+> Runner (Go) thêm 2 logs mới từ Task 9: IP changed WARN + custom thresholds INFO.
+> Target (Node.js) **KHÔNG cần thêm log**.
 
 ---
 
@@ -564,7 +652,7 @@ Kiểm tra mọi thứ hoạt động qua browser + CLI:
 19. Sidebar có link "Compare"
 20. Tất cả data flows đúng (API → DB → Dashboard)
 
-### 12 logging checks (DL1-DL12)
+### 14 logging checks (DL1-DL14)
 
 Kiểm tra log đúng format:
 1. DL1: Latency chart rendered (console.debug)
@@ -578,8 +666,11 @@ Kiểm tra log đúng format:
 9. DL9: Chart empty data (console.warn — khi Charts tab mở trước khi có data)
 10. DL10: Provider list fetch failed (console.error — test bằng tắt API rồi mở /compare)
 11. DL11: Export zero samples WARN (docker compose logs — export run chưa có samples)
+12. DL12: Chart data aggregation error (console.error — khi data corrupt)
+13. DL13: IP changed WARN (docker compose logs runner — khi IP thay đổi giữa run)
+14. DL14: Custom thresholds INFO (docker compose logs runner — khi user set non-default thresholds)
 
-> Chi tiết: xem `SPRINT-4-PLAN.md` → Task 8 → Verification Checklist + Logging Verification Checklist.
+> Chi tiết: xem `SPRINT-4-PLAN.md` → Task 11 → Verification Checklist + Logging Verification Checklist.
 
 ---
 
@@ -605,15 +696,16 @@ Trong quá trình review Sprint 4, audit toàn bộ 4 sprints phát hiện 8 log
 
 ## 6. Tóm lại
 
-Sprint 4 biến Dashboard từ **"bảng số liệu"** thành **"bảng điều khiển thông minh"**:
+Sprint 4 biến Dashboard từ **"bảng số liệu"** thành **"bảng điều khiển thông minh"** + **nâng cấp scoring engine**:
 
 1. **Charts interactive** — latency P50/P95/P99, uptime timeline, score gauge + history
 2. **Radar comparison** — so sánh 2-5 providers bằng 1 biểu đồ mạng nhện
 3. **Export JSON/CSV** — tải về báo cáo đầy đủ hoặc bảng tính
 4. **Error log viewer** — xem chi tiết từng lỗi, lọc theo loại/protocol
-5. **27 log points mới** — debug charts, compare, export, error viewer (không có silent failures)
-6. **32 files** — 23 files mới + 9 files sửa
-7. **Sprint 4 = Sprint cuối** — hệ thống hoàn chỉnh sau 4 sprints
+5. **Scoring engine nâng cấp** — IP re-check 60s, gradient IP scoring, TLS version scoring, configurable thresholds
+6. **29 log points mới** — debug charts, compare, export, error viewer, scoring (không có silent failures)
+7. **45 files** — 24 files mới + 21 files sửa
+8. **Sprint 4 = Sprint cuối** — hệ thống hoàn chỉnh sau 4 sprints
 
 **Tổng kết 4 Sprints**:
 ```

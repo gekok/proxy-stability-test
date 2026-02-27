@@ -56,9 +56,10 @@ proxy-stability-test/
 ├── changelog/
 │   └── CHANGELOG.md
 │
-├── database/                           ← 2 files
+├── database/                           ← 2 files (+1 in Sprint 4)
 │   ├── schema.sql                      # 7 tables + uuid-ossp
-│   └── migrations/001_initial_schema.sql
+│   ├── migrations/001_initial_schema.sql
+│   └── migrations/002_scoring_improvements.sql  # Sprint 4: ip_clean_score, majority_tls_version, tls_version_score
 │
 ├── runner/                             ← Go — 17 files
 │   ├── cmd/runner/main.go              # HTTP server :9090, graceful shutdown
@@ -173,7 +174,7 @@ proxy-stability-test/
 | **1** | **DONE** | Foundation | Target service (HTTP+HTTPS), API CRUD, Runner HTTP/HTTPS testers, Engine (orchestrator, scheduler, result collector), Reporter, Scorer (3 components), E2E |
 | **2** | **DONE** | Dashboard UI | Next.js + Tailwind setup, API client + hooks, Provider/Proxy CRUD pages, Start/Stop test flow, Runs list, Run detail, Overview page, CORS, E2E with real proxies |
 | **3** | **DONE** | WS + Security | WS echo rewrite, WS/WSS tester (gorilla/websocket), IP check (DNSBL + GeoIP), Burst test (100 goroutines), Scoring upgrade (3→5 components), API WS/IP endpoints, Dashboard 4 tabs + 6 cards |
-| **4** | Not started | Advanced Dashboard | recharts charts (Latency, Uptime, ScoreGauge, ScoreHistory), Export JSON/CSV, Provider comparison (radar chart), Error log viewer, E2E |
+| **4** | Not started | Advanced Dashboard + Scoring Improvements | recharts charts (Latency, Uptime, ScoreGauge, ScoreHistory), Export JSON/CSV, Provider comparison (radar chart), Error log viewer, Scoring engine improvements (IP stability re-check, gradient IP, TLS version scoring, configurable thresholds), E2E |
 
 ## Key Conventions
 
@@ -198,6 +199,7 @@ proxy-stability-test/
   - Security skipped: 0.3125×U + 0.3125×L + 0.1875×J + 0.1875×WS
   - Both skipped (Sprint 1/2): 0.385×U + 0.385×L + 0.230×J
 - **Grades**: A (≥0.90), B (≥0.75), C (≥0.60), D (≥0.40), F (<0.40)
+- **Sprint 4 improvements**: Configurable thresholds via `ScoringConfig`, IP clean gradient (`1 - listed/queried`), TLS version scoring (1.3=1.0, 1.2=0.7), IP stability periodic re-check (60s)
 
 ### Run Status Flow
 `pending` → `running` → `stopping` → `completed` | `failed` | `cancelled`
@@ -214,7 +216,7 @@ proxy-stability-test/
 | 1 | ~90 | 0 | ~90 |
 | 2 | 34 | 15 | 49 |
 | 3 | 51 | 3 | 54 |
-| 4 | 8 | 19 | 27 |
+| 4 | 10 | 19 | 29 |
 
 ## Important Implementation Notes
 

@@ -19,6 +19,10 @@ export function RunSummaryCards({ summary }: RunSummaryCardsProps) {
     ? summary.uptime_ratio >= 0.95 ? 'good' : summary.uptime_ratio >= 0.9 ? 'warning' : 'bad'
     : null;
 
+  const jitterColor = summary?.jitter_ms != null
+    ? summary.jitter_ms <= 30 ? 'good' : summary.jitter_ms <= 60 ? 'warning' : 'bad'
+    : null;
+
   const totalSamples = summary
     ? summary.http_sample_count + summary.https_sample_count
     : 0;
@@ -61,10 +65,15 @@ export function RunSummaryCards({ summary }: RunSummaryCardsProps) {
       </Card>
 
       <Card>
-        <div className="text-sm text-gray-500">Samples</div>
-        <div className="text-3xl font-bold font-mono text-gray-900">
-          {summary ? totalSamples.toLocaleString() : '—'}
+        <div className="text-sm text-gray-500">Jitter</div>
+        <div className={`text-3xl font-bold font-mono ${colorClass(jitterColor)}`}>
+          {summary?.jitter_ms != null ? `${Math.round(summary.jitter_ms)} ms` : '—'}
         </div>
+        {summary && (
+          <div className="text-xs text-gray-500">
+            {totalSamples.toLocaleString()} samples
+          </div>
+        )}
       </Card>
 
       <Card>

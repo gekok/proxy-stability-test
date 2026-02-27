@@ -433,6 +433,28 @@ Ghi lại toàn bộ quá trình phát triển project, từ lên plan đến im
 ### Added
 - `CLAUDE.md` — project context file for AI-assisted development
 
+## 2026-02-27 — Sprint 4 Plan Update
+
+### v5.1 — Sprint 4 Plan Update: Scoring Improvements (2026-02-27)
+
+- Sprint 4 plan mở rộng: 8 → 11 tasks
+- **Task 9: Scoring Engine Improvements (Go Runner)**
+  - IP stability periodic re-check goroutine (60s interval)
+  - IP clean gradient scoring (`1 - listed/queried`)
+  - TLS version-based scoring (1.3→1.0, 1.2→0.7)
+  - `ScoringConfig` struct for configurable thresholds
+- **Task 10: Scoring Config API + Dashboard Integration**
+  - DB migration: 3 new columns (`ip_clean_score`, `majority_tls_version`, `tls_version_score`)
+  - API: `scoring_config` in run creation
+  - Dashboard: threshold inputs in TestConfigForm, gradient display
+- **Task 11**: E2E renumbered (from old Task 8), +scoring checks, DL13-DL14
+- `SCORING-SPEC.md` created (scoring documentation)
+- Dashboard bug fixes: Jitter card + Protocol Breakdown success rate
+- Logging: 27 → 29 log points (+2 Runner: IP changed WARN, custom thresholds INFO)
+- Files: 24 new + 21 modified = 45 total (was 23+9=32)
+
+---
+
 ## 2026-02-26 — Implementation Phase
 
 ### v3.0 — Sprint 1 Implementation Complete

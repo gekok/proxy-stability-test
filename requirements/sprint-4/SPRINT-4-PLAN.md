@@ -14,24 +14,32 @@
 ## Tổng quan Tasks (theo thứ tự dependency)
 
 ```
+Track A — Charts:
 Task 1: Chart Library Setup + Shared Utilities     ←── independent
   ├── Task 2 (LatencyChart + UptimeTimeline)        ← depends on 1
   ├── Task 3 (ScoreGauge + Score History)            ← depends on 1
-  │
+
+Track B — Export + Compare:
 Task 4: Controller API — Export + Compare           ←── independent
   ├── Task 5 (Comparison Page)                       ← depends on 1, 4
   ├── Task 6 (Export Download)                       ← depends on 4
-  │
+
+Track C — Error Viewer:
 Task 7: Error Log Viewer                            ←── independent
-  │
-Task 8: E2E Integration Test                        ← depends on 2, 3, 5, 6, 7
+
+Track D — Scoring Improvements:
+Task 9: Scoring Engine Improvements (Go Runner)    ←── independent
+  └── Task 10 (Scoring Config — API + Dashboard)    ← depends on 9
+
+Task 11: E2E Integration Test                       ← depends on 2, 3, 5, 6, 7, 10
 ```
 
-> Task 1, Task 4, Task 7 có thể làm **song song** vì không phụ thuộc nhau.
+> Task 1, Task 4, Task 7, Task 9 có thể làm **song song** vì không phụ thuộc nhau.
 > Task 5 phụ thuộc cả Task 1 (chart components) và Task 4 (compare API).
-> Task 8 (E2E test) phải chờ tất cả tasks khác hoàn thành.
+> Task 10 phụ thuộc Task 9 (scoring engine phải implement trước khi wire API + Dashboard).
+> Task 11 (E2E test) phải chờ tất cả tasks khác hoàn thành.
 
-### 8 Tasks tổng quan
+### 11 Tasks tổng quan
 
 | # | Task | Mô tả | Files mới | Files sửa |
 |---|------|-------|-----------|-----------|
@@ -42,7 +50,9 @@ Task 8: E2E Integration Test                        ← depends on 2, 3, 5, 6, 7
 | 5 | Comparison Page (Radar Chart) | /compare page, ProviderSelect, RadarCompareChart, ComparisonTable, useCompare | 5 new | 2 modify |
 | 6 | Export Feature (Download) | ExportButton dropdown, useExport blob download | 2 new | 3 modify |
 | 7 | Error Log Viewer | ErrorLogViewer, ErrorLogFilters, useErrorLogs, unified ErrorLogEntry type | 3 new | 2 modify |
-| 8 | E2E Integration Test | 10-step scenario, 20 functional checks, DL1-DL12 logging checks | 0 new | 0 modify |
+| 9 | Scoring Engine Improvements (Go Runner) | IP stability re-check, IP clean gradient, TLS version scoring, configurable thresholds | 0 new | 5 modify |
+| 10 | Scoring Config — API + Dashboard Integration | DB migration, API scoring_config, Dashboard threshold inputs + gradient display | 1 new | 7 modify |
+| 11 | E2E Integration Test | 10-step scenario, 24 functional checks, DL1-DL14 logging checks, scoring checks | 0 new | 0 modify |
 
 ### Thay đổi so với Sprint 3 (upgrade Dashboard)
 
@@ -2114,12 +2124,299 @@ const { allErrors, totalErrorCount, loading: errorsLoading, filters, setFilters,
 
 ---
 
-## Task 8: E2E Integration Test
+## Task 9: Scoring Engine Improvements (Go Runner)
 
 ### Mục tiêu
-Test toàn bộ Sprint 4 flow end-to-end: charts render, comparison page, export download, error log viewer. 10-step scenario, 20 functional checks, DL1-DL12 logging checks.
+Nâng cấp scoring engine trong Go Runner: IP stability periodic re-check, IP clean gradient scoring (thay vì binary), TLS version-based scoring, configurable scoring thresholds qua `ScoringConfig` struct.
 
-### 8.1 Kịch bản test (10 bước)
+### 9.1 IP Stability Periodic Re-check (CRITICAL)
+
+Hiện tại `orchestrator.go` hardcode `IPStable = true`, `IPChanges = 0`. IP chỉ check 1 lần ở Phase 1.
+
+**Cải tiến**: Thêm goroutine re-check IP mỗi 60s trong Phase 3 (continuous), so sánh với `observedIP` ban đầu.
+
+```go
+// orchestrator.go — Phase 3: thêm IP re-check goroutine
+go func() {
+    ticker := time.NewTicker(time.Duration(cfg.IPCheckIntervalSec) * time.Second)
+    defer ticker.Stop()
+    for {
+        select {
+        case <-ctx.Done():
+            return
+        case <-ticker.C:
+            newIP, err := getIPViaProxy(proxyURL, targetHTTPURL)
+            if err != nil {
+                slog.Warn("IP re-check failed", "module", "engine.orchestrator", "error", err)
+                continue
+            }
+            ipMu.Lock()
+            if newIP != ipResult.ObservedIP {
+                slog.Warn("IP changed", "module", "engine.orchestrator",
+                    "phase", "continuous", "old_ip", ipResult.ObservedIP, "new_ip", newIP)
+                ipResult.IPStable = false
+                ipResult.IPChanges++
+                ipResult.ObservedIP = newIP // track latest
+            }
+            ipMu.Unlock()
+        }
+    }
+}()
+```
+
+- `ipMu sync.Mutex` bảo vệ `ipResult` struct (concurrent access từ re-check goroutine + rolling summary)
+- Default interval: 60s (configurable via `ScoringConfig.IPCheckIntervalSec`)
+- Log `WARN` khi IP thay đổi → DL13
+
+### 9.2 IP Clean Gradient Scoring (HIGH)
+
+Hiện tại: `ipClean = 0` nếu listed ở bất kỳ server nào (binary).
+
+**Cải tiến**: Gradient scoring dựa trên tỷ lệ listed/queried:
+
+```go
+// scorer.go
+func ipCleanGradient(listed, queried int) float64 {
+    if queried == 0 {
+        return 1.0 // no data = assume clean
+    }
+    return 1.0 - float64(listed)/float64(queried)
+}
+// 1/4 listed → 0.75 (thay vì 0.0)
+// 4/4 listed → 0.00
+// 0/4 listed → 1.00
+```
+
+- `blacklistListed` và `blacklistQueried` đã có trong `IPCheckResult` struct
+- Backward compatible: old data với `listed=0` → vẫn = 1.0
+
+### 9.3 TLS Version-Based Scoring (HIGH)
+
+Hiện tại: `tlsScore = 1.0` nếu có bất kỳ HTTPS sample thành công (binary).
+
+**Cải tiến**: Score dựa trên TLS version majority:
+
+```go
+// scorer.go
+func tlsVersionScore(majorityVersion string) float64 {
+    switch majorityVersion {
+    case "TLS 1.3", "tls1.3":
+        return 1.0
+    case "TLS 1.2", "tls1.2":
+        return 0.7
+    default:
+        return 0.0 // < TLS 1.2 hoặc không có HTTPS
+    }
+}
+```
+
+- `majorityVersion`: TLS version xuất hiện nhiều nhất trong HTTPS samples
+- Tính trong `result_collector.go` → `ComputeSummary()` bằng cách đếm `TLSVersion` field
+- Cần thêm field `MajorityTLSVersion string` vào `RunSummary`
+
+### 9.4 Configurable Scoring Thresholds (HIGH)
+
+Hiện tại: Mốc latency 500ms, jitter 100ms, WS hold 60000ms hardcode trong `scorer.go`.
+
+**Cải tiến**: `ScoringConfig` struct truyền vào `ComputeScore()`:
+
+```go
+// domain/types.go
+type ScoringConfig struct {
+    LatencyThresholdMs  float64 `json:"latency_threshold_ms"`   // default 500
+    JitterThresholdMs   float64 `json:"jitter_threshold_ms"`    // default 100
+    WSHoldTargetMs      float64 `json:"ws_hold_target_ms"`      // default 60000
+    IPCheckIntervalSec  int     `json:"ip_check_interval_sec"`  // default 60
+}
+
+func DefaultScoringConfig() ScoringConfig {
+    return ScoringConfig{
+        LatencyThresholdMs: 500,
+        JitterThresholdMs:  100,
+        WSHoldTargetMs:     60000,
+        IPCheckIntervalSec: 60,
+    }
+}
+```
+
+```go
+// scorer.go — ComputeScore nhận ScoringConfig
+func ComputeScore(summary *RunSummary, cfg ScoringConfig) float64 {
+    sLatency = clamp(1 - summary.TTFBP95MS/cfg.LatencyThresholdMs, 0, 1)
+    sJitter  = clamp(1 - summary.JitterMS/cfg.JitterThresholdMs, 0, 1)
+    // ... wsHoldRatio dùng cfg.WSHoldTargetMs
+}
+```
+
+- Log `INFO` khi dùng custom thresholds (không phải default) → DL14
+
+### Files sửa — Task 9
+
+```
+runner/internal/domain/types.go           ← ADD ScoringConfig struct, MajorityTLSVersion field in RunSummary
+runner/internal/scoring/scorer.go         ← ipCleanGradient(), tlsVersionScore(), ComputeScore(cfg), custom threshold log
+runner/internal/engine/orchestrator.go    ← IP re-check goroutine, ipMu mutex, ScoringConfig propagation
+runner/internal/engine/result_collector.go ← Compute MajorityTLSVersion in ComputeSummary()
+runner/internal/config/config.go          ← Parse ScoringConfig from trigger payload
+```
+
+### Logging (2 events)
+
+| # | Module | Event | Level | Fields |
+|---|--------|-------|-------|--------|
+| 1 | `engine.orchestrator` (server) | IP changed | WARN | `phase`, `old_ip`, `new_ip`, `proxy_id`, `run_id` |
+| 2 | `scoring.scorer` (server) | Using custom thresholds | INFO | `latency_threshold_ms`, `jitter_threshold_ms`, `ws_hold_target_ms` |
+
+### Acceptance Criteria — Task 9
+- [ ] IP re-check goroutine runs every `IPCheckIntervalSec` seconds during Phase 3
+- [ ] `ipResult.IPStable` set to `false` when IP changes, `IPChanges` incremented
+- [ ] Mutex protects `ipResult` from concurrent access
+- [ ] `ipCleanGradient()` returns `1 - listed/queried` (not binary)
+- [ ] `tlsVersionScore()` returns 1.0 for TLS 1.3, 0.7 for TLS 1.2, 0.0 otherwise
+- [ ] `MajorityTLSVersion` computed in `ComputeSummary()`
+- [ ] `ComputeScore()` accepts `ScoringConfig` parameter
+- [ ] Default thresholds match current hardcoded values (500/100/60000/60)
+- [ ] `go build ./...` passes
+- [ ] DL13 (IP changed WARN) fires when IP changes mid-run
+- [ ] DL14 (custom thresholds INFO) fires when non-default config used
+
+---
+
+## Task 10: Scoring Config — API + Dashboard Integration
+
+### Mục tiêu
+Wire Task 9 scoring improvements vào API + Dashboard: DB migration cho 3 new columns, API accept `scoring_config` trong POST body, Dashboard hiển thị gradient IP score + TLS version + config inputs.
+
+### 10.1 DB Migration
+
+```sql
+-- database/migrations/002_scoring_improvements.sql
+
+-- Add new scoring columns to run_summary
+ALTER TABLE run_summary ADD COLUMN IF NOT EXISTS ip_clean_score DOUBLE PRECISION;
+ALTER TABLE run_summary ADD COLUMN IF NOT EXISTS majority_tls_version VARCHAR(20);
+ALTER TABLE run_summary ADD COLUMN IF NOT EXISTS tls_version_score DOUBLE PRECISION;
+
+-- ip_clean_score: gradient score (0.0 - 1.0) thay vì binary
+-- majority_tls_version: 'TLS 1.3', 'TLS 1.2', etc.
+-- tls_version_score: 1.0 (TLS 1.3), 0.7 (TLS 1.2), 0.0 (other)
+
+COMMENT ON COLUMN run_summary.ip_clean_score IS 'Gradient IP clean score: 1 - (listed/queried). Sprint 4.';
+COMMENT ON COLUMN run_summary.majority_tls_version IS 'Most common TLS version in HTTPS samples. Sprint 4.';
+COMMENT ON COLUMN run_summary.tls_version_score IS 'TLS version score: 1.3=1.0, 1.2=0.7, other=0.0. Sprint 4.';
+```
+
+### 10.2 API Integration
+
+**POST /api/v1/runs/start** — Accept optional `scoring_config` in body:
+
+```typescript
+// api/src/routes/runs.ts — start endpoint
+interface StartRunBody {
+  proxy_ids: string[];
+  config?: {
+    http_rpm?: number;
+    https_rpm?: number;
+    timeout_ms?: number;
+    warmup_count?: number;
+    scoring_config?: {
+      latency_threshold_ms?: number;
+      jitter_threshold_ms?: number;
+      ws_hold_target_ms?: number;
+      ip_check_interval_sec?: number;
+    };
+  };
+}
+```
+
+**POST /api/v1/runs/:id/summary** — UPSERT extended with new columns:
+
+```sql
+-- Add to existing UPSERT in runs.ts
+INSERT INTO run_summary (..., ip_clean_score, majority_tls_version, tls_version_score)
+VALUES (..., $ip_clean_score, $majority_tls_version, $tls_version_score)
+ON CONFLICT (run_id) DO UPDATE SET
+  ..., ip_clean_score = EXCLUDED.ip_clean_score,
+  majority_tls_version = EXCLUDED.majority_tls_version,
+  tls_version_score = EXCLUDED.tls_version_score;
+```
+
+### 10.3 Dashboard Integration
+
+**TypeScript types**:
+```typescript
+// dashboard/src/types/index.ts
+interface ScoringConfig {
+  latency_threshold_ms: number;
+  jitter_threshold_ms: number;
+  ws_hold_target_ms: number;
+  ip_check_interval_sec: number;
+}
+
+// Extend RunSummary
+interface RunSummary {
+  // ... existing fields
+  ip_clean_score?: number;       // gradient (0.0 - 1.0)
+  majority_tls_version?: string; // 'TLS 1.3', 'TLS 1.2'
+  tls_version_score?: number;    // 1.0, 0.7, 0.0
+}
+```
+
+**TestConfigForm** — Collapsible "Scoring Thresholds" section:
+```
+[▶ Scoring Thresholds (Advanced)]
+  Latency threshold:  [500] ms
+  Jitter threshold:   [100] ms
+  WS hold target:     [60000] ms
+  IP check interval:  [60] sec
+```
+
+**RunScoreBreakdown** — IP score hiển thị gradient:
+```
+IP Clean: ████████░░ 0.75 (3/4 clean)  ← thay vì "✓ Clean" / "✗ Dirty"
+```
+
+**RunMetricsDetail** — TLS version display:
+```
+TLS Version: TLS 1.3 (score: 1.0)     ← thay vì chỉ "TLS supported: Yes"
+```
+
+### Files — Task 10
+
+```
+Tạo mới (1 file):
+  database/migrations/002_scoring_improvements.sql  ← 3 new columns
+
+Sửa đổi (7 files):
+  api/src/routes/runs.ts               ← Accept scoring_config, extend summary UPSERT
+  api/src/types/index.ts               ← ScoringConfig type, extend RunSummary
+  api/src/services/runService.ts       ← Pass scoring_config to Runner trigger
+  dashboard/src/types/index.ts         ← ScoringConfig, extend RunSummary
+  dashboard/src/components/test/TestConfigForm.tsx  ← Scoring thresholds section
+  dashboard/src/components/runs/RunScoreBreakdown.tsx ← Gradient IP display
+  dashboard/src/components/runs/RunMetricsDetail.tsx  ← TLS version display
+```
+
+### Acceptance Criteria — Task 10
+- [ ] Migration `002_scoring_improvements.sql` applies without errors
+- [ ] 3 new columns exist in `run_summary` table
+- [ ] API accepts `scoring_config` in start request body
+- [ ] API summary UPSERT includes `ip_clean_score`, `majority_tls_version`, `tls_version_score`
+- [ ] Dashboard ScoringConfig type defined
+- [ ] TestConfigForm shows collapsible scoring thresholds section
+- [ ] RunScoreBreakdown shows gradient IP clean score (not just binary)
+- [ ] RunMetricsDetail shows TLS version string + score
+- [ ] `tsc --noEmit` passes for API + Dashboard
+- [ ] `next build` passes
+
+---
+
+## Task 11: E2E Integration Test
+
+### Mục tiêu
+Test toàn bộ Sprint 4 flow end-to-end: charts render, comparison page, export download, error log viewer, **scoring improvements** (IP stability, gradient IP, TLS version, custom thresholds). 10-step scenario, 24 functional checks, DL1-DL14 logging checks.
+
+### 11.1 Kịch bản test (10 bước)
 
 ```
 Bước 1:  docker compose up -d -> 5 services start
@@ -2134,7 +2431,7 @@ Bước 9:  Export: Run Detail -> ExportButton -> CSV -> file downloads
 Bước 10: Errors tab -> verify error log viewer loads
 ```
 
-### 8.2 Verification Checks (20 functional)
+### 11.2 Verification Checks (20+ functional)
 
 | # | Check | Expected |
 |---|-------|----------|
@@ -2158,8 +2455,12 @@ Bước 10: Errors tab -> verify error log viewer loads
 | 18 | Error log viewer | Error rows expandable with detail |
 | 19 | Error filters | Source/error_type/protocol filters work |
 | 20 | Sidebar nav | "Compare" link in sidebar navigates correctly |
+| 21 | IP stability updates | run_summary `ip_stable` updates during long run (re-check goroutine) |
+| 22 | IP clean gradient | RunScoreBreakdown shows gradient IP score (e.g., 0.75) not binary |
+| 23 | TLS version display | RunMetricsDetail shows TLS version string (e.g., "TLS 1.3") + score |
+| 24 | Custom thresholds | TestConfigForm scoring thresholds section visible and submittable |
 
-### 8.3 Logging Checks (DL1-DL12)
+### 11.3 Logging Checks (DL1-DL14)
 
 | # | Check | Verify | Expected |
 |---|-------|--------|----------|
@@ -2175,8 +2476,10 @@ Bước 10: Errors tab -> verify error log viewer loads
 | DL10 | Provider fetch error | Browser console: filter "Provider list fetch failed" | `error_detail` khi API down, test bằng tắt API rồi mở /compare |
 | DL11 | Export empty samples | `docker compose logs api` grep "zero.*samples" | WARN log khi export run chưa có HTTP hoặc WS samples |
 | DL12 | Chart data aggregation error | Browser console: filter "Chart data aggregation failed" | `module: "charts.data"`, `fn_name`, `error` khi samples data corrupt/invalid |
+| DL13 | IP changed WARN | `docker compose logs runner` grep "IP changed" | WARN log với `old_ip`, `new_ip` khi IP thay đổi giữa run (IP re-check goroutine) |
+| DL14 | Custom thresholds INFO | `docker compose logs runner` grep "custom thresholds" | INFO log với `latency_threshold_ms`, `jitter_threshold_ms`, `ws_hold_target_ms` khi user set non-default thresholds |
 
-### 8.4 Quick Verify Script
+### 11.4 Quick Verify Script
 
 ```bash
 #!/bin/bash
@@ -2220,9 +2523,9 @@ echo ""
 echo "=== Sprint 4 Verification Complete ==="
 ```
 
-### Acceptance Criteria — Task 8
-- [ ] 20 functional checks pass
-- [ ] DL1-DL12 logging checks pass
+### Acceptance Criteria — Task 11
+- [ ] 24 functional checks pass
+- [ ] DL1-DL14 logging checks pass
 - [ ] Quick verify script runs without errors
 - [ ] Charts render with actual data from running/completed tests
 - [ ] Comparison page works with 2+ providers
@@ -2262,15 +2565,17 @@ echo "=== Sprint 4 Verification Complete ==="
 
 > ChartErrorBoundary render errors are attributed to their respective chart modules (`charts.latency`, `charts.uptime`, `charts.score_history`) via dynamic `module: 'charts.' + chartType`. `charts.data` = useChartData aggregation error. So với bản gốc (14), thêm 5 events: ChartContainer empty (1), useChartData error (1), ProviderSelect fetch failed (1), ComparisonTable rendered (1), Error logs fetch failed (1) = net +5.
 
-### Sprint 4 Tổng log points mới: 27
+### Sprint 4 Tổng log points mới: 29
 
 | Service | Server | Client | Tổng |
 |---------|--------|--------|------|
+| Runner (Go) | 2 | 0 | 2 |
 | API (Node.js) | 8 | 0 | 8 |
 | Dashboard (Next.js) | 0 | 19 | 19 |
-| **Tổng Sprint 4** | **8** | **19** | **27** |
+| **Tổng Sprint 4** | **10** | **19** | **29** |
 
-> Runner (Go) và Target (Node.js) **KHÔNG cần thêm log** — Sprint 4 chỉ thêm features ở API + Dashboard.
+> Runner (Go) thêm 2 log events mới từ Task 9 (Scoring Engine Improvements): IP changed WARN + custom thresholds INFO.
+> Target (Node.js) **KHÔNG cần thêm log**.
 >
 > **Counting convention**: Parameterized events (e.g., 'Chart render error' with different `module` values like `charts.latency`, `charts.score_history`) are counted once per unique module context where they can fire. ChartErrorBoundary render errors are attributed to their respective chart module via dynamic `module: 'charts.' + chartType`.
 
@@ -2279,7 +2584,7 @@ echo "=== Sprint 4 Verification Complete ==="
 ## Files tổng cộng Sprint 4
 
 ```
-Tạo mới (23 files):
+Tạo mới (24 files):
   dashboard/src/components/charts/ChartContainer.tsx      ← Responsive chart wrapper
   dashboard/src/components/charts/ChartTooltip.tsx        ← Custom tooltip
   dashboard/src/components/charts/ChartErrorBoundary.tsx  ← Error boundary for chart render errors
@@ -2302,32 +2607,42 @@ Tạo mới (23 files):
   dashboard/src/hooks/useErrorLogs.ts                     ← Fetch, merge, filter errors
   api/src/routes/export.ts                                ← Export + Compare endpoints
   api/src/services/exportService.ts                       ← Data transformation + CSV
+  database/migrations/002_scoring_improvements.sql        ← 3 new columns (Task 10) ★
 
-Sửa đổi (9 files):
+Sửa đổi (21 files):
   dashboard/package.json                                  ← Add recharts dependency
-  dashboard/src/types/index.ts                            ← Chart types, ErrorLogEntry, comparison types
+  dashboard/src/types/index.ts                            ← Chart types, ErrorLogEntry, comparison types, ScoringConfig ★
   dashboard/src/app/runs/[runId]/page.tsx                ← Add Charts, Errors tabs
   dashboard/src/app/runs/page.tsx                         ← Add export per row
   dashboard/src/components/runs/RunHeader.tsx             ← Add ExportButton
+  dashboard/src/components/runs/RunScoreBreakdown.tsx     ← Gradient IP display ★
+  dashboard/src/components/runs/RunMetricsDetail.tsx      ← TLS version display ★
+  dashboard/src/components/test/TestConfigForm.tsx        ← Scoring thresholds section ★
   dashboard/src/components/layout/Sidebar.tsx             ← Add Compare nav item
   api/src/routes/index.ts                                 ← Register export routes
-  api/src/services/runService.ts                          ← Add comparison query helpers
-  api/src/types/index.ts                                  ← Add RunExport, ProviderComparison types
+  api/src/routes/runs.ts                                  ← Accept scoring_config, extend summary UPSERT ★
+  api/src/services/runService.ts                          ← Add comparison query helpers, pass scoring_config ★
+  api/src/types/index.ts                                  ← Add RunExport, ProviderComparison, ScoringConfig types ★
+  runner/internal/domain/types.go                         ← ScoringConfig struct, MajorityTLSVersion ★
+  runner/internal/scoring/scorer.go                       ← ipCleanGradient, tlsVersionScore, configurable thresholds ★
+  runner/internal/engine/orchestrator.go                  ← IP re-check goroutine, ipMu mutex ★
+  runner/internal/engine/result_collector.go              ← MajorityTLSVersion computation ★
+  runner/internal/config/config.go                        ← Parse ScoringConfig from trigger payload ★
 ```
 
-**Tổng: 23 files mới + 9 files sửa = 32 files**
+**Tổng: 24 files mới + 21 files sửa = 45 files** (★ = Task 9/10 additions)
 
 ---
 
 ## Verification
 
-### Functional Checks (20) — xem Task 8, Section 8.2
+### Functional Checks (24) — xem Task 11, Section 11.2
 
-### Logging Checks (DL1-DL12) — xem Task 8, Section 8.3
+### Logging Checks (DL1-DL14) — xem Task 11, Section 11.3
 
-### Quick Verify Script — xem Task 8, Section 8.4
+### Quick Verify Script — xem Task 11, Section 11.4
 
-> **Sprint 4 hoàn thành khi**: 20 functional checks pass + DL1-DL12 logging checks pass + Quick verify script pass + Dashboard hiển thị charts, comparison, export, error viewer đầy đủ.
+> **Sprint 4 hoàn thành khi**: 24 functional checks pass + DL1-DL14 logging checks pass + Quick verify script pass + Dashboard hiển thị charts, comparison, export, error viewer, scoring improvements đầy đủ.
 
 > **Hệ thống hoàn chỉnh khi Sprint 4 done**: Toàn bộ 4 sprints (Sprint 1: Backend + Runner, Sprint 2: Dashboard UI, Sprint 3: WS+IP+Parallel, Sprint 4: Charts+Compare+Export) hoàn thành = Proxy Stability Test System sẵn sàng sử dụng.
 

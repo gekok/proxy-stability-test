@@ -36,11 +36,11 @@ export function RunMetricsDetail({ summary, run }: RunMetricsDetailProps) {
 
   const httpTotal = summary.http_sample_count;
   const httpsTotal = summary.https_sample_count;
-  const httpSuccessRatio = httpTotal > 0 ? summary.http_success_count / httpTotal : null;
-  const httpsSuccessRatio = httpsTotal > 0
-    ? (httpTotal > 0
-      ? (summary.http_success_count - (summary.http_error_count || 0)) / httpsTotal
-      : null)
+  const totalHTTPSamples = httpTotal + httpsTotal;
+  // Note: http_success_count / http_error_count are combined totals (HTTP + HTTPS),
+  // not per-protocol. We can only compute overall success rate.
+  const overallSuccessRatio = totalHTTPSamples > 0
+    ? summary.http_success_count / totalHTTPSamples
     : null;
 
   const hasWS = summary.ws_sample_count > 0;
@@ -99,32 +99,36 @@ export function RunMetricsDetail({ summary, run }: RunMetricsDetailProps) {
             <thead>
               <tr className="text-left text-gray-500">
                 <th className="pr-6 py-1">Protocol</th>
-                <th className="pr-6 py-1">Success Rate</th>
                 <th className="pr-6 py-1">Samples</th>
+                <th className="pr-6 py-1">Success Rate</th>
               </tr>
             </thead>
             <tbody className="font-mono">
               <tr>
                 <td className="pr-6 py-1 text-gray-700">HTTP</td>
-                <td className="pr-6 py-1">{formatRatio(httpSuccessRatio)}</td>
                 <td className="pr-6 py-1">{httpTotal}</td>
+                <td className="pr-6 py-1 text-gray-400" rowSpan={2}></td>
               </tr>
               <tr>
                 <td className="pr-6 py-1 text-gray-700">HTTPS</td>
-                <td className="pr-6 py-1">{formatRatio(httpsSuccessRatio)}</td>
                 <td className="pr-6 py-1">{httpsTotal}</td>
               </tr>
               {hasWS && (
                 <tr>
                   <td className="pr-6 py-1 text-gray-700">WebSocket</td>
+                  <td className="pr-6 py-1">{summary.ws_sample_count}</td>
                   <td className="pr-6 py-1">
                     {summary.ws_success_count + summary.ws_error_count > 0
                       ? formatRatio(summary.ws_success_count / (summary.ws_success_count + summary.ws_error_count))
                       : '—'}
                   </td>
-                  <td className="pr-6 py-1">{summary.ws_sample_count}</td>
                 </tr>
               )}
+              <tr className="border-t font-medium">
+                <td className="pr-6 py-1 text-gray-900">Overall</td>
+                <td className="pr-6 py-1">{totalHTTPSamples + (hasWS ? summary.ws_sample_count : 0)}</td>
+                <td className="pr-6 py-1">{formatRatio(overallSuccessRatio)}</td>
+              </tr>
             </tbody>
           </table>
         </div>

@@ -197,7 +197,7 @@ proxy-stability-test/
 │   │   ├── SPRINT-3-PLAN.md            # 9 tasks: WS, IP check, Scheduler, Burst, Scoring, E2E
 │   │   └── SPRINT-3-EXPLANATION.md
 │   └── sprint-4/
-│       ├── SPRINT-4-PLAN.md            # 8 tasks: Charts, Export, Compare, Error viewer, E2E
+│       ├── SPRINT-4-PLAN.md            # 11 tasks: Charts, Export, Compare, Error viewer, Scoring improvements, E2E
 │       └── SPRINT-4-EXPLANATION.md
 │
 ├── changelog/
@@ -274,7 +274,7 @@ proxy-stability-test/
 | **1** | **DONE** | Foundation | Target (HTTP+HTTPS), API CRUD, Runner HTTP/HTTPS testers, Engine, Reporter, Scorer (3 components), E2E |
 | **2** | **DONE** | Dashboard UI | Next.js setup, Tailwind CSS, API client + hooks, Provider/Proxy CRUD, Start/Stop flow, Runs list, Run detail, Overview |
 | **3** | **DONE** | WS + Security | WS echo rewrite, WS/WSS tester (gorilla/websocket), IP check (DNSBL + GeoIP), Burst test, Scoring (5 components), API WS/IP endpoints, Dashboard 4 tabs |
-| **4** | Not started | Advanced Dashboard | recharts charts, Export JSON/CSV, Provider comparison (radar chart), Error log viewer |
+| **4** | Not started | Advanced Dashboard + Scoring | recharts charts, Export JSON/CSV, Provider comparison (radar chart), Error log viewer, Scoring improvements (IP stability re-check, gradient IP, TLS version, configurable thresholds) |
 
 ## Database Schema
 

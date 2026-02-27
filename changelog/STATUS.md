@@ -1,6 +1,6 @@
 # Project Status — Proxy Stability Test System
 
-Last updated: 2026-02-26
+Last updated: 2026-02-27
 
 ---
 
@@ -11,7 +11,7 @@ Last updated: 2026-02-26
 | **Sprint 1** | **DONE** | Foundation — Target, API, Runner, Engine, Reporter, Scorer |
 | **Sprint 2** | **DONE** | Dashboard UI — CRUD pages, Start/Stop flow, Run detail, Overview |
 | **Sprint 3** | **DONE** | WS tester, IP checker, Burst test, 5-component scoring, API WS/IP endpoints, Dashboard 4 tabs |
-| Sprint 4 | Not started | Charts, Export, Compare, Error log viewer |
+| Sprint 4 | Not started | Charts, Export, Compare, Error log viewer, Scoring improvements |
 
 ---
 
@@ -241,13 +241,36 @@ Target WS echo:  connect + echo + hold timer → working (code 1000)
 
 ---
 
+## Sprint 4 — Plan Updated (2026-02-27)
+
+### Plan Changes (v2)
+
+- **Original**: 8 tasks (Charts, Export, Compare, Error viewer, E2E)
+- **Updated**: 11 tasks (+Task 9 Scoring Engine, +Task 10 Scoring Config, Task 8→11 E2E)
+- Scoring improvements: IP stability re-check, IP clean gradient, TLS version scoring, configurable thresholds
+- DB migration: 3 new columns in run_summary (ip_clean_score, majority_tls_version, tls_version_score)
+- Logging: 27 → 29 log points (+2 Runner: IP changed WARN, custom thresholds INFO)
+- Files: 24 new + 21 modified = 45 total (was 23+9=32)
+
+### Known Scoring Limitations (Sprint 3) → Fixed in Sprint 4
+
+| # | Limitation (Sprint 3) | Fix (Sprint 4) | Task |
+|---|----------------------|-----------------|------|
+| 1 | IP Stability hardcoded `true` | Periodic re-check every 60s (goroutine) | Task 9.1 |
+| 2 | IP Clean binary 0/1 | Gradient scoring: `1 - listed/queried` | Task 9.2 |
+| 3 | TLS scoring binary (has HTTPS = 1.0) | TLS 1.3=1.0, TLS 1.2=0.7, other=0.0 | Task 9.3 |
+| 4 | Scoring thresholds hardcoded (500ms/100ms/60000ms) | Configurable `ScoringConfig` struct | Task 9.4 |
+
+---
+
 ## Known Limitations (Sprint 3)
 
-1. **Charts/Export**: Not implemented (Sprint 4)
-2. **Provider comparison**: No side-by-side comparison (Sprint 4)
-3. **Error log viewer**: Not implemented (Sprint 4)
+1. **Charts/Export**: Not implemented (Sprint 4 Tasks 1-6)
+2. **Provider comparison**: No side-by-side comparison (Sprint 4 Task 5)
+3. **Error log viewer**: Not implemented (Sprint 4 Task 7)
 4. **External proxies**: Require ngrok or public IP to expose Target service
 5. **No charts**: Run detail shows tables only, recharts added in Sprint 4
+6. **Scoring limitations**: IP stability, IP clean, TLS scoring, thresholds — all fixed in Sprint 4 Tasks 9-10
 
 ---
 
