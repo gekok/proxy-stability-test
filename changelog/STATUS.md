@@ -11,7 +11,7 @@ Last updated: 2026-02-27
 | **Sprint 1** | **DONE** | Foundation — Target, API, Runner, Engine, Reporter, Scorer |
 | **Sprint 2** | **DONE** | Dashboard UI — CRUD pages, Start/Stop flow, Run detail, Overview |
 | **Sprint 3** | **DONE** | WS tester, IP checker, Burst test, 5-component scoring, API WS/IP endpoints, Dashboard 4 tabs |
-| Sprint 4 | Not started | Charts, Export, Compare, Error log viewer, Scoring improvements |
+| **Sprint 4** | **DONE** | Charts (recharts), Export JSON/CSV, Compare radar, Error log viewer, Scoring improvements |
 
 ---
 
@@ -241,36 +241,121 @@ Target WS echo:  connect + echo + hold timer → working (code 1000)
 
 ---
 
-## Sprint 4 — Plan Updated (2026-02-27)
+## Sprint 4 — Completed (2026-02-27)
 
-### Plan Changes (v2)
+### New Files (24)
 
-- **Original**: 8 tasks (Charts, Export, Compare, Error viewer, E2E)
-- **Updated**: 11 tasks (+Task 9 Scoring Engine, +Task 10 Scoring Config, Task 8→11 E2E)
-- Scoring improvements: IP stability re-check, IP clean gradient, TLS version scoring, configurable thresholds
-- DB migration: 3 new columns in run_summary (ip_clean_score, majority_tls_version, tls_version_score)
-- Logging: 27 → 29 log points (+2 Runner: IP changed WARN, custom thresholds INFO)
-- Files: 24 new + 21 modified = 45 total (was 23+9=32)
+| File | Purpose |
+|------|---------|
+| `dashboard/src/components/charts/ChartContainer.tsx` | Responsive chart wrapper (loading/empty/data states) |
+| `dashboard/src/components/charts/ChartTooltip.tsx` | Custom recharts tooltip |
+| `dashboard/src/components/charts/ChartErrorBoundary.tsx` | React error boundary for charts |
+| `dashboard/src/components/charts/chart-utils.ts` | CHART_COLORS, formatMs, formatPercent, bucketByTime, percentile |
+| `dashboard/src/components/charts/LatencyChart.tsx` | LineChart P50/P95/P99 latency over time |
+| `dashboard/src/components/charts/UptimeTimeline.tsx` | ComposedChart stacked area (success/error) + uptime ratio line |
+| `dashboard/src/components/charts/ScoreGauge.tsx` | RadialBarChart score gauge with grade center text |
+| `dashboard/src/components/charts/ScoreHistoryChart.tsx` | LineChart score over time + grade threshold bands |
+| `dashboard/src/hooks/useChartData.ts` | Standalone hook — fetches up to 5000 samples, time-bucket aggregation |
+| `dashboard/src/hooks/useSummaryHistory.ts` | Accumulate summary snapshots (useRef, max 200, dedup 5s) |
+| `dashboard/src/hooks/useExport.ts` | Blob download (fetch → URL.createObjectURL → trigger download) |
+| `dashboard/src/hooks/useCompare.ts` | Fetch provider comparison data from API |
+| `dashboard/src/hooks/useErrorLogs.ts` | 3 independent fetches (HTTP/WS/IP), merge + filter errors |
+| `dashboard/src/components/runs/ExportButton.tsx` | JSON/CSV dropdown with spinner |
+| `dashboard/src/components/runs/ErrorLogViewer.tsx` | Expandable error rows, source badges (HTTP=blue, WS=purple, IP=amber) |
+| `dashboard/src/components/runs/ErrorLogFilters.tsx` | 3 filter selects (source, error_type, protocol) |
+| `dashboard/src/app/compare/page.tsx` | Provider comparison page |
+| `dashboard/src/components/compare/ProviderSelect.tsx` | Multi-select provider pills (min 2, max 5) |
+| `dashboard/src/components/compare/RadarCompareChart.tsx` | RadarChart 5 axes (Uptime/Latency/Jitter/WS/Security) |
+| `dashboard/src/components/compare/ComparisonTable.tsx` | Side-by-side metrics table |
+| `api/src/services/exportService.ts` | generateJSON, generateCSV, compareProviders |
+| `database/migrations/002_scoring_improvements.sql` | ALTER TABLE run_summary ADD ip_clean_score, majority_tls_version, tls_version_score |
 
-### Known Scoring Limitations (Sprint 3) → Fixed in Sprint 4
+### Modified Files (21+)
 
-| # | Limitation (Sprint 3) | Fix (Sprint 4) | Task |
-|---|----------------------|-----------------|------|
-| 1 | IP Stability hardcoded `true` | Periodic re-check every 60s (goroutine) | Task 9.1 |
-| 2 | IP Clean binary 0/1 | Gradient scoring: `1 - listed/queried` | Task 9.2 |
-| 3 | TLS scoring binary (has HTTPS = 1.0) | TLS 1.3=1.0, TLS 1.2=0.7, other=0.0 | Task 9.3 |
-| 4 | Scoring thresholds hardcoded (500ms/100ms/60000ms) | Configurable `ScoringConfig` struct | Task 9.4 |
+| File | Changes |
+|------|---------|
+| `dashboard/package.json` | Added recharts ^2.12.0 |
+| `dashboard/src/types/index.ts` | Added ErrorLogEntry, ScoringConfig, ProviderComparison, chart types |
+| `dashboard/src/app/runs/[runId]/page.tsx` | 4→6 tabs (+ Charts, + Errors), useChartData hook integration |
+| `dashboard/src/components/runs/RunHeader.tsx` | Added ExportButton |
+| `dashboard/src/components/runs/RunsList.tsx` | Added export action per completed row |
+| `dashboard/src/components/runs/RunScoreBreakdown.tsx` | Gradient IP display (progress bar), TLS version score |
+| `dashboard/src/components/runs/RunMetricsDetail.tsx` | TLS version string + score display |
+| `dashboard/src/components/runs/RunWSSamples.tsx` | Added scroll (max-h-[600px]) + sticky thead |
+| `dashboard/src/components/runs/RunSummaryCards.tsx` | Updated score display |
+| `dashboard/src/components/layout/Sidebar.tsx` | 3→4 nav items (+ Compare) |
+| `dashboard/src/components/test/TestConfigForm.tsx` | Collapsible "Scoring Thresholds" section (4 inputs) |
+| `api/src/routes/export.ts` | Rewritten: GET /runs/:id/export?format=json\|csv, GET /providers/compare |
+| `api/src/routes/index.ts` | Fixed route registration — export at root level |
+| `api/src/routes/runs.ts` | Summary UPSERT extended to 45 params (+ 3 new scoring columns), scoring_config in start body |
+| `api/src/types/index.ts` | Added RunExport, ProviderComparison, ScoringConfig interfaces |
+| `api/src/services/runService.ts` | Pass scoring_config to Runner trigger |
+| `api/src/middleware/pagination.ts` | MAX_LIMIT 100 → 5000 (chart data fix) |
+| `runner/internal/domain/types.go` | Added ScoringConfig struct, DefaultScoringConfig(), MajorityTLSVersion/IPCleanScore/TLSVersionScore fields |
+| `runner/internal/config/config.go` | Parse ScoringConfig from trigger payload |
+| `runner/internal/scoring/scorer.go` | ComputeScore(summary, cfg), ipCleanGradient(), tlsVersionScore(), WS score=0 when all fail |
+| `runner/internal/engine/orchestrator.go` | IP re-check goroutine (60s), ipMu mutex, pass ScoringConfig, IP check status code validation |
+| `runner/internal/engine/result_collector.go` | MajorityTLSVersion computation, uptime: require StatusCode 200-399, WS drop rate 1.0 when all fail |
+
+### Post-Implementation Bug Fixes
+
+| Bug | Root Cause | Fix |
+|-----|-----------|-----|
+| Uptime 100% with all 404s | `result_collector.go` only checked `ErrorType == ""`, not StatusCode | Added `StatusCode > 0 && StatusCode < 400` check |
+| WS score 0.301 when all WS fail | When `WSSuccessCount=0`, formula gave `0.3*(1-0)=0.3` | Short-circuit: if `WSSuccessCount == 0` → score = 0 |
+| IP shows "Clean" without data | `getIPViaProxy` didn't validate HTTP response status (404 body used as IP) | Return empty if `resp.StatusCode != 200` |
+| WS drop rate 0% when no messages sent | `totalSent=0` → division skipped → `WSDropRate=0` | Set `WSDropRate=1.0` when `successCount == 0` |
+| Charts show only 1 data point | `useChartData` shared 50-sample fetch from `useRunDetail` | Refactored to standalone hook fetching 5000 samples |
+| API caps chart data at 100 | `pagination.ts` `MAX_LIMIT=100` | Changed to `MAX_LIMIT=5000` |
+
+### New API Endpoints
+
+| Method | Endpoint | Status |
+|--------|----------|--------|
+| GET | `/api/v1/runs/:id/export?format=json\|csv` | Working |
+| GET | `/api/v1/providers/compare?provider_ids=a,b` | Working |
+
+### Dashboard Updates
+
+| Feature | Detail |
+|---------|--------|
+| Run Detail Tabs | 4→6 tabs: HTTP, WS, IP, Score, **Charts**, **Errors** |
+| Sidebar Nav | 3→4 items: Overview, Providers, Runs, **Compare** |
+| Charts | LatencyChart (P50/P95/P99), UptimeTimeline (stacked area), ScoreGauge (radial), ScoreHistoryChart (line + grade bands) |
+| Export | JSON/CSV download button in RunHeader + RunsList |
+| Compare Page | Multi-select providers, RadarChart 5 axes, ComparisonTable side-by-side |
+| Error Log Viewer | Unified errors from HTTP+WS+IP, expandable rows, 3 filters |
+| WS Connections Table | Scrollable (max-h-[600px]) with sticky header |
+
+### Scoring Improvements (Sprint 3 Limitations → Fixed)
+
+| # | Limitation (Sprint 3) | Fix (Sprint 4) |
+|---|----------------------|-----------------|
+| 1 | IP Stability hardcoded `true` | Periodic re-check every 60s (goroutine) |
+| 2 | IP Clean binary 0/1 | Gradient scoring: `1 - listed/queried` |
+| 3 | TLS scoring binary (has HTTPS = 1.0) | TLS 1.3=1.0, TLS 1.2=0.7, other=0.3 |
+| 4 | Scoring thresholds hardcoded | Configurable `ScoringConfig` (latency, jitter, ws_hold, burst_error) |
+
+### Build Verified (2026-02-27)
+
+```
+Go build:        go build ./...     → clean
+API TypeScript:  tsc --noEmit       → clean
+Target TS:       tsc --noEmit       → clean
+Dashboard:       tsc --noEmit + next build → clean (all routes)
+Docker:          5 containers       → all healthy
+```
 
 ---
 
-## Known Limitations (Sprint 3)
+## Known Limitations (Post Sprint 4)
 
-1. **Charts/Export**: Not implemented (Sprint 4 Tasks 1-6)
-2. **Provider comparison**: No side-by-side comparison (Sprint 4 Task 5)
-3. **Error log viewer**: Not implemented (Sprint 4 Task 7)
-4. **External proxies**: Require ngrok or public IP to expose Target service
-5. **No charts**: Run detail shows tables only, recharts added in Sprint 4
-6. **Scoring limitations**: IP stability, IP clean, TLS scoring, thresholds — all fixed in Sprint 4 Tasks 9-10
+1. **External proxies**: Require ngrok or public IP to expose Target service
+2. **No batch import**: Providers/proxies entered via UI only (no YAML/CSV import)
+3. **No alerting**: No email/Slack notifications when test completes or proxy fails
+4. **No authentication**: Dashboard has no login/auth
+5. **No PDF export**: Only JSON/CSV supported
+6. **No historical trending**: Compare page uses latest run only, no time-series comparison
 
 ---
 

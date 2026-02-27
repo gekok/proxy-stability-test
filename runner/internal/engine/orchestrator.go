@@ -400,6 +400,14 @@ func (o *Orchestrator) getIPViaProxy(ctx context.Context) string {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != 200 {
+		o.logger.Warn("IP check got non-200 response",
+			"phase", "ip_check",
+			"status_code", resp.StatusCode,
+		)
+		return ""
+	}
+
 	body, _ := io.ReadAll(resp.Body)
 	var ipResp struct {
 		IP string `json:"ip"`

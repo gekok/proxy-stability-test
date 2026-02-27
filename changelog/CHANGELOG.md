@@ -604,6 +604,99 @@ Ghi lại toàn bộ quá trình phát triển project, từ lên plan đến im
 
 ---
 
+### v6.0 — Sprint 4 Implementation Complete (2026-02-27)
+
+**Toàn bộ Sprint 4 (11 tasks) đã implement — Advanced Dashboard + Scoring Improvements.**
+
+**Dashboard — Charts (8 new files):**
+- recharts ^2.12.0 installed
+- `ChartContainer.tsx` — responsive wrapper (loading/empty/data states)
+- `ChartTooltip.tsx` — custom tooltip
+- `ChartErrorBoundary.tsx` — React class error boundary
+- `chart-utils.ts` — CHART_COLORS, bucketByTime, formatMs, formatPercent, percentile
+- `LatencyChart.tsx` — LineChart P50/P95/P99 over time
+- `UptimeTimeline.tsx` — ComposedChart stacked success/error + uptime ratio
+- `ScoreGauge.tsx` — RadialBarChart with score + grade
+- `ScoreHistoryChart.tsx` — LineChart + ReferenceArea grade bands
+
+**Dashboard — Compare Page (5 new files):**
+- `/compare` page with multi-select ProviderSelect (min 2, max 5 providers)
+- `RadarCompareChart.tsx` — 5-axis RadarChart (Uptime/Latency/Jitter/WS/Security)
+- `ComparisonTable.tsx` — side-by-side metrics
+- `useCompare.ts` hook
+
+**Dashboard — Export + Error Viewer (5 new files):**
+- `ExportButton.tsx` — JSON/CSV dropdown with spinner, in RunHeader + RunsList
+- `useExport.ts` — blob fetch → URL.createObjectURL → download trigger
+- `ErrorLogViewer.tsx` — expandable error rows, color-coded source badges
+- `ErrorLogFilters.tsx` — 3 filter selects (source, error_type, protocol)
+- `useErrorLogs.ts` — 3 independent fetches + merge + client-side filter
+
+**Dashboard — Other (4 new files + 11 modified):**
+- `useChartData.ts` — standalone hook fetching 5000 samples, time-bucket aggregation
+- `useSummaryHistory.ts` — sliding window 200 summary snapshots
+- Run detail: 4→6 tabs (+ Charts, + Errors)
+- Sidebar: 3→4 nav items (+ Compare)
+- TestConfigForm: collapsible "Scoring Thresholds" section
+
+**API — Export + Compare (2 new files + 5 modified):**
+- `exportService.ts` — generateJSON (full RunExport), generateCSV (flattened), compareProviders (SQL AVG)
+- Export routes rewritten: GET /runs/:id/export?format=json|csv, GET /providers/compare
+- Route registration fixed (export at root level)
+- Summary UPSERT extended: 42→45 params (+ip_clean_score, majority_tls_version, tls_version_score)
+- ScoringConfig in run start body → passed to Runner trigger
+
+**Go Runner — Scoring Engine (5 files modified):**
+- `ScoringConfig` struct + `DefaultScoringConfig()` in domain/types.go
+- `ComputeScore()` accepts configurable thresholds
+- `ipCleanGradient()` — gradient score `1 - listed/queried` (replaces binary)
+- `tlsVersionScore()` — TLS 1.3=1.0, 1.2=0.7, other=0.3
+- IP re-check goroutine in orchestrator (60s ticker, ipMu mutex)
+- `MajorityTLSVersion` computed in result_collector (mode of TLS versions)
+
+**Database:**
+- Migration 002: 3 new columns in run_summary
+
+**Totals: ~24 new files + ~21 modified = ~45 files. Project: ~135 source files.**
+
+---
+
+### v6.1 — Post-Sprint 4 Bug Fixes (2026-02-27)
+
+**6 bugs found and fixed after Sprint 4 implementation:**
+
+1. **Uptime 100% with all 404s** (HIGH)
+   - `result_collector.go` only checked `ErrorType == ""` for success counting
+   - HTTP 404 has no connection error → counted as success
+   - Fix: Added `StatusCode > 0 && StatusCode < 400` check
+
+2. **WS score 0.301 when all WS connections fail** (HIGH)
+   - When `WSSuccessCount=0`, `totalSent=0` → `WSDropRate=0` → formula gave `0.3*(1-0)=0.3`
+   - Fix: Short-circuit in scorer.go: `if WSSuccessCount == 0 → ScoreWS = 0`
+
+3. **IP shows "Clean" without actual IP data** (HIGH)
+   - `getIPViaProxy` didn't validate HTTP response status
+   - Target returned 404 → garbage body parsed as "IP" → blacklist check says "clean"
+   - Fix: Return empty string if `resp.StatusCode != 200`
+
+4. **WS drop rate 0% when no messages sent** (MEDIUM)
+   - When all WS connections fail, `totalSent=0` → division skipped → `WSDropRate=0`
+   - Fix: Set `WSDropRate=1.0` when `successCount == 0`
+
+5. **Charts show only 1 data point** (MEDIUM)
+   - `useChartData` shared 50-sample fetch from `useRunDetail`
+   - 50 samples at 500 RPM = 6 seconds = 1 time bucket = invisible line
+   - Fix: Refactored `useChartData` to standalone hook fetching 5000 samples independently
+
+6. **API pagination caps chart data at 100** (MEDIUM)
+   - `pagination.ts` had `MAX_LIMIT = 100` — even sending limit=5000 got capped
+   - Fix: Changed `MAX_LIMIT` to 5000
+
+**Additional UI fix:**
+- WS Connections table: added `max-h-[600px] overflow-y-auto` + sticky thead
+
+---
+
 ## Files
 
 | File | Mô tả |
@@ -616,6 +709,6 @@ Ghi lại toàn bộ quá trình phát triển project, từ lên plan đến im
 | `requirements/sprint-2/SPRINT-2-EXPLANATION.md` | Giải thích Sprint 2 |
 | `requirements/sprint-3/SPRINT-3-PLAN.md` | Sprint 3 chi tiết — 9 tasks + acceptance criteria |
 | `requirements/sprint-3/SPRINT-3-EXPLANATION.md` | Giải thích Sprint 3 |
-| `requirements/sprint-4/SPRINT-4-PLAN.md` | Sprint 4 chi tiết — 8 tasks + acceptance criteria |
+| `requirements/sprint-4/SPRINT-4-PLAN.md` | Sprint 4 chi tiết — 11 tasks + acceptance criteria |
 | `requirements/sprint-4/SPRINT-4-EXPLANATION.md` | Giải thích Sprint 4 |
-| `changelog/CHANGELOG.md` | File này — ghi lại quá trình |
+| `changelog/CHANGELOG.md` | File này — ghi lại quá trình (v0.1 - v6.1) |

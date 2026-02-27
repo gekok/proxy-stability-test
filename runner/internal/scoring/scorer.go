@@ -52,18 +52,23 @@ func ComputeScore(summary *domain.RunSummary, cfg domain.ScoringConfig) {
 
 	// S_ws = 0.4*(1-wsErrorRate) + 0.3*(1-wsDropRate) + 0.3*wsHoldRatio
 	if hasWS {
-		wsTotal := summary.WSSuccessCount + summary.WSErrorCount
-		wsErrorRate := 0.0
-		if wsTotal > 0 {
-			wsErrorRate = float64(summary.WSErrorCount) / float64(wsTotal)
-		}
+		if summary.WSSuccessCount == 0 {
+			// All connections failed → WS score is 0
+			summary.ScoreWS = 0
+		} else {
+			wsTotal := summary.WSSuccessCount + summary.WSErrorCount
+			wsErrorRate := 0.0
+			if wsTotal > 0 {
+				wsErrorRate = float64(summary.WSErrorCount) / float64(wsTotal)
+			}
 
-		wsHoldRatio := 0.0
-		if summary.WSAvgHoldMS > 0 {
-			wsHoldRatio = clamp(summary.WSAvgHoldMS/cfg.WSHoldTargetMs, 0, 1)
-		}
+			wsHoldRatio := 0.0
+			if summary.WSAvgHoldMS > 0 {
+				wsHoldRatio = clamp(summary.WSAvgHoldMS/cfg.WSHoldTargetMs, 0, 1)
+			}
 
-		summary.ScoreWS = 0.4*(1-wsErrorRate) + 0.3*(1-summary.WSDropRate) + 0.3*wsHoldRatio
+			summary.ScoreWS = 0.4*(1-wsErrorRate) + 0.3*(1-summary.WSDropRate) + 0.3*wsHoldRatio
+		}
 	}
 
 	// S_security = 0.30*ipCleanGradient + 0.25*geoMatch + 0.25*ipStable + 0.20*tlsVersionScore

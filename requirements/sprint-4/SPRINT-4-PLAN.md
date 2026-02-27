@@ -1,13 +1,29 @@
 # Sprint 4 — Advanced Dashboard + Export (Chi tiết)
 
+> **Status: DONE** (2026-02-27) — All 11 tasks implemented, builds verified, Docker deployed.
+
 > **Mục tiêu Sprint 4**: Hoàn thiện Dashboard UI — charts chi tiết (Latency, Uptime, Score), trang so sánh providers (radar chart), export JSON/CSV, xem log lỗi chi tiết per run. Sprint 4 là sprint cuối cùng, hoàn thành toàn bộ hệ thống.
 
 | Field | Value |
 |-------|-------|
 | Sprint | 4 / 4 |
+| Status | **DONE** |
 | Thời gian | Week 7-8 |
 | Input | Sprint 3 hoàn thành: Full pipeline HTTP+HTTPS+WS+IP, test song song 10 proxies, scoring 5 tiêu chí, 54 log points |
 | Output | UI hoàn chỉnh với charts + so sánh providers + export JSON/CSV + error log viewer |
+
+### Implementation Notes
+
+- **Tasks 1-10**: All implemented, `go build`, `tsc --noEmit`, `next build` all clean
+- **Task 11 (E2E)**: Manual verification done with real proxy (TunProxy VN-SNVT2)
+- **Post-implementation bugs found and fixed**:
+  - Uptime calculation: added `StatusCode > 0 && StatusCode < 400` check (was only checking `ErrorType == ""`)
+  - WS scoring: `ScoreWS = 0` when `WSSuccessCount == 0` (was giving 0.301)
+  - IP check: validate `resp.StatusCode == 200` before using response body as IP
+  - WS drop rate: set to 1.0 when all connections fail (was 0.0)
+  - Chart data: refactored `useChartData` to fetch 5000 samples independently
+  - API pagination: `MAX_LIMIT` changed from 100 to 5000
+  - WS table: added scroll (`max-h-[600px]`) + sticky thead
 
 ---
 

@@ -15,7 +15,7 @@ A proxy stability testing system that evaluates **static residential proxies** (
 
 | Service | Language | Port(s) | Role |
 |---------|----------|---------|------|
-| **Runner** | Go | :9090 | Long-running test engine. 7 goroutines per proxy: HTTP, HTTPS, WS, WS-collector, Burst, Summary, Reporter. Receives trigger from API. |
+| **Runner** | Go | :9090 | Long-running test engine. 8 goroutines per proxy: HTTP, HTTPS, WS, WS-collector, Burst, Summary, Reporter, IP-recheck. Receives trigger from API. |
 | **API** | Node.js/TypeScript (Express) | :8000 | Controller API. CRUD providers/proxies/runs, trigger Runner, serve results. |
 | **Target** | Node.js/TypeScript | :3001 (HTTP), :3443 (HTTPS) | Self-hosted target service. Endpoints: /echo, /ip, /large, /slow, /health, /ws-echo. |
 | **Dashboard** | Next.js 14 + Tailwind CSS | :3000 | UI for managing providers/proxies, starting tests, viewing results/charts. |
@@ -29,7 +29,7 @@ A proxy stability testing system that evaluates **static residential proxies** (
 - **Dashboard**: Next.js 14, React, Tailwind CSS, `recharts` (Sprint 4), client-side `console.*` logging
 - **Database**: PostgreSQL with `uuid-ossp` extension
 
-## Current Directory Structure (Sprint 3 — ~93 source files)
+## Current Directory Structure (Sprint 4 — ~135 source files)
 
 ```
 proxy-stability-test/
@@ -56,56 +56,57 @@ proxy-stability-test/
 ├── changelog/
 │   └── CHANGELOG.md
 │
-├── database/                           ← 2 files (+1 in Sprint 4)
+├── database/                           ← 3 files
 │   ├── schema.sql                      # 7 tables + uuid-ossp
 │   ├── migrations/001_initial_schema.sql
-│   └── migrations/002_scoring_improvements.sql  # Sprint 4: ip_clean_score, majority_tls_version, tls_version_score
+│   └── migrations/002_scoring_improvements.sql  # ip_clean_score, majority_tls_version, tls_version_score
 │
 ├── runner/                             ← Go — 17 files
 │   ├── cmd/runner/main.go              # HTTP server :9090, graceful shutdown
 │   ├── internal/
 │   │   ├── server/handler.go           # POST /trigger, POST /stop, GET /health
-│   │   ├── config/config.go
-│   │   ├── domain/types.go             # HTTPSample, WSSample, IPCheckResult, RunSummary, BurstConfig
+│   │   ├── config/config.go            # Parse ScoringConfig from trigger payload
+│   │   ├── domain/types.go             # HTTPSample, WSSample, IPCheckResult, RunSummary, ScoringConfig
 │   │   ├── proxy/
 │   │   │   ├── dialer.go               # TCP connect + CONNECT tunnel
 │   │   │   ├── http_tester.go          # HTTP test goroutine (500 RPM)
 │   │   │   ├── https_tester.go         # HTTPS via CONNECT tunnel (500 RPM)
-│   │   │   ├── ws_tester.go            # WS/WSS tester (gorilla/websocket, 60 msg/min) ★ Sprint 3
+│   │   │   ├── ws_tester.go            # WS/WSS tester (gorilla/websocket, 60 msg/min)
 │   │   │   └── tls_inspector.go        # TLS version/cipher extraction
-│   │   ├── ipcheck/                    ★ Sprint 3
+│   │   ├── ipcheck/
 │   │   │   ├── blacklist.go            # DNSBL lookup (4 servers: spamhaus, barracuda, spamcop, sorbs)
 │   │   │   └── geoip.go               # GeoIP via ip-api.com (country/region/city)
 │   │   ├── engine/
-│   │   │   ├── orchestrator.go         # 5-phase lifecycle: IP check, warmup, HTTP/HTTPS/WS/burst goroutines
+│   │   │   ├── orchestrator.go         # 5-phase lifecycle + IP re-check goroutine (60s), 8 goroutines per proxy
 │   │   │   ├── scheduler.go            # Multi-proxy (max 10 parallel, semaphore)
-│   │   │   └── result_collector.go     # Percentiles, HTTP + WS summary computation
+│   │   │   └── result_collector.go     # Percentiles, HTTP + WS summary, MajorityTLSVersion
 │   │   ├── reporter/
 │   │   │   ├── api_reporter.go         # POST batches: HTTP samples, WS samples, IP checks, summary
 │   │   │   └── db_reporter.go          # Direct DB insert (placeholder)
-│   │   └── scoring/scorer.go           # 5-component scoring with weight redistribution
+│   │   └── scoring/scorer.go           # 5-component scoring, configurable thresholds, weight redistribution
 │   ├── go.mod                          # github.com/gorilla/websocket v1.5.3
 │   ├── go.sum
 │   └── Dockerfile
 │
-├── api/                                ← Node.js/TypeScript — 14 files
+├── api/                                ← Node.js/TypeScript — 15 files
 │   ├── src/
 │   │   ├── index.ts                    # Express :8000, pino-http, CORS
 │   │   ├── logger.ts
 │   │   ├── db/pool.ts
-│   │   ├── types/index.ts
+│   │   ├── types/index.ts              # RunExport, ProviderComparison, ScoringConfig
 │   │   ├── routes/
 │   │   │   ├── index.ts
 │   │   │   ├── providers.ts            # CRUD /api/v1/providers
 │   │   │   ├── proxies.ts             # CRUD + AES-256-GCM encryption
-│   │   │   ├── runs.ts                # CRUD + trigger + HTTP/WS batch + IP checks + summary
+│   │   │   ├── runs.ts                # CRUD + trigger + HTTP/WS batch + IP checks + summary (45 params)
 │   │   │   ├── results.ts
-│   │   │   └── export.ts              # Placeholder (Sprint 4)
+│   │   │   └── export.ts              # GET /runs/:id/export?format=json|csv, GET /providers/compare
 │   │   ├── services/
-│   │   │   ├── runService.ts
-│   │   │   └── scoringService.ts       # Placeholder
+│   │   │   ├── runService.ts           # Pass scoring_config to Runner trigger
+│   │   │   ├── scoringService.ts       # Placeholder
+│   │   │   └── exportService.ts        # generateJSON, generateCSV, compareProviders
 │   │   └── middleware/
-│   │       ├── pagination.ts           # Cursor-based
+│   │       ├── pagination.ts           # Cursor-based, MAX_LIMIT 5000
 │   │       └── errorHandler.ts
 │   ├── package.json
 │   ├── package-lock.json
@@ -128,7 +129,7 @@ proxy-stability-test/
 │   ├── tsconfig.json
 │   └── Dockerfile
 │
-└── dashboard/                          ← Next.js 14 + Tailwind CSS — ~56 files (Sprint 3)
+└── dashboard/                          ← Next.js 14 + Tailwind CSS — 71 src files + 4 config
     ├── tailwind.config.ts              # Score colors, pulse-slow animation
     ├── postcss.config.js
     ├── .env.local.example
@@ -140,7 +141,8 @@ proxy-stability-test/
     │   │   ├── error.tsx               # Global error boundary
     │   │   ├── providers/page.tsx      # Provider CRUD + inline proxy expansion
     │   │   ├── runs/page.tsx           # Runs list + status filter (Suspense)
-    │   │   └── runs/[runId]/page.tsx   # Run detail (4 tabs, realtime polling 3s)
+    │   │   ├── runs/[runId]/page.tsx   # Run detail (6 tabs, realtime polling 3s)
+    │   │   └── compare/page.tsx        # Provider comparison (radar + table)
     │   ├── lib/
     │   │   ├── api-client.ts           # Fetch wrapper, timeout, error classification
     │   │   └── logger.ts               # pino (server) + console helpers (client)
@@ -149,20 +151,30 @@ proxy-stability-test/
     │   │   ├── useProviders.ts         # Provider CRUD
     │   │   ├── useProxies.ts           # Proxy CRUD (password_changed only)
     │   │   ├── useRuns.ts              # Runs fetch + status filter
-    │   │   └── useRunDetail.ts         # Parallel fetch (run + summary + HTTP + WS + IP) + stopRun
+    │   │   ├── useRunDetail.ts         # Parallel fetch (run + summary + HTTP + WS + IP) + stopRun
+    │   │   ├── useChartData.ts         # Standalone: fetch 5000 samples, time-bucket aggregation
+    │   │   ├── useSummaryHistory.ts    # Sliding window 200 summary snapshots
+    │   │   ├── useExport.ts            # Blob download (fetch → createObjectURL → trigger)
+    │   │   ├── useCompare.ts           # Fetch provider comparison data
+    │   │   └── useErrorLogs.ts         # 3 independent fetches + merge + client-side filter
     │   ├── components/
-    │   │   ├── layout/Sidebar.tsx      # Fixed sidebar, 3 nav items
+    │   │   ├── layout/Sidebar.tsx      # Fixed sidebar, 4 nav items (Overview, Providers, Runs, Compare)
     │   │   ├── ui/                     # 11 components: Button, Badge, Card, Input, Select, Table, Modal, ConfirmDialog, LoadingSpinner, ErrorAlert, EmptyState
+    │   │   ├── charts/                 # 8 files: ChartContainer, ChartTooltip, ChartErrorBoundary, chart-utils,
+    │   │   │                           #   LatencyChart, UptimeTimeline, ScoreGauge, ScoreHistoryChart
+    │   │   ├── compare/                # 3 files: ProviderSelect, RadarCompareChart, ComparisonTable
     │   │   ├── providers/              # ProviderList (expandable rows), ProviderForm, DeleteProviderDialog
     │   │   ├── proxies/                # ProxyList, ProxyForm, ProxyCard, DeleteProxyDialog
-    │   │   ├── test/                   # ProxySelector, TestConfigForm, StartTestDialog
-    │   │   ├── runs/                   # RunHeader, RunSummaryCards (6 cards), RunMetricsDetail (5-component),
-    │   │   │                           #   RunHttpSamples, RunWSSamples ★, RunIPCheck ★, RunScoreBreakdown ★,
+    │   │   ├── test/                   # ProxySelector, TestConfigForm (+scoring thresholds), StartTestDialog
+    │   │   ├── runs/                   # 14 files: RunHeader, RunSummaryCards (6 cards), RunMetricsDetail (5-component),
+    │   │   │                           #   RunHttpSamples, RunWSSamples (scroll), RunIPCheck, RunScoreBreakdown,
+    │   │   │                           #   ExportButton, ErrorLogViewer, ErrorLogFilters,
     │   │   │                           #   RunsList, RunsFilter, RunStatusBadge, StopTestButton
     │   │   └── overview/               # StatCards, ActiveRunsList, RecentResultsList
-    │   └── types/index.ts              # Provider, Proxy, TestRun, RunSummary, HttpSample, WsSample ★, IPCheckResult ★
+    │   └── types/index.ts              # All types: Provider, Proxy, TestRun, RunSummary, HttpSample,
+    │                                   #   WsSample, IPCheckResult, ScoringConfig, ErrorLogEntry, ProviderComparison
     ├── next.config.js                  # standalone output + API rewrites
-    ├── package.json
+    ├── package.json                    # recharts ^2.12.0
     ├── tsconfig.json
     └── Dockerfile                      # Multi-stage: deps → builder → runner
 ```
@@ -174,7 +186,7 @@ proxy-stability-test/
 | **1** | **DONE** | Foundation | Target service (HTTP+HTTPS), API CRUD, Runner HTTP/HTTPS testers, Engine (orchestrator, scheduler, result collector), Reporter, Scorer (3 components), E2E |
 | **2** | **DONE** | Dashboard UI | Next.js + Tailwind setup, API client + hooks, Provider/Proxy CRUD pages, Start/Stop test flow, Runs list, Run detail, Overview page, CORS, E2E with real proxies |
 | **3** | **DONE** | WS + Security | WS echo rewrite, WS/WSS tester (gorilla/websocket), IP check (DNSBL + GeoIP), Burst test (100 goroutines), Scoring upgrade (3→5 components), API WS/IP endpoints, Dashboard 4 tabs + 6 cards |
-| **4** | Not started | Advanced Dashboard + Scoring Improvements | recharts charts (Latency, Uptime, ScoreGauge, ScoreHistory), Export JSON/CSV, Provider comparison (radar chart), Error log viewer, Scoring engine improvements (IP stability re-check, gradient IP, TLS version scoring, configurable thresholds), E2E |
+| **4** | **DONE** | Advanced Dashboard + Scoring Improvements | recharts charts (Latency, Uptime, ScoreGauge, ScoreHistory), Export JSON/CSV, Provider comparison (radar chart), Error log viewer, Scoring improvements (IP re-check, gradient IP, TLS version, configurable thresholds), Bug fixes (uptime calc, WS scoring, IP check) |
 
 ## Key Conventions
 
@@ -199,7 +211,8 @@ proxy-stability-test/
   - Security skipped: 0.3125×U + 0.3125×L + 0.1875×J + 0.1875×WS
   - Both skipped (Sprint 1/2): 0.385×U + 0.385×L + 0.230×J
 - **Grades**: A (≥0.90), B (≥0.75), C (≥0.60), D (≥0.40), F (<0.40)
-- **Sprint 4 improvements**: Configurable thresholds via `ScoringConfig`, IP clean gradient (`1 - listed/queried`), TLS version scoring (1.3=1.0, 1.2=0.7), IP stability periodic re-check (60s)
+- **Sprint 4 improvements** (implemented): Configurable thresholds via `ScoringConfig`, IP clean gradient (`1 - listed/queried`), TLS version scoring (1.3=1.0, 1.2=0.7, other=0.3), IP stability periodic re-check (60s goroutine)
+- **Bug fixes**: Uptime requires `StatusCode > 0 && < 400` (not just no error), WS score=0 when all fail, IP check validates HTTP 200
 
 ### Run Status Flow
 `pending` → `running` → `stopping` → `completed` | `failed` | `cancelled`

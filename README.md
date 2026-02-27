@@ -37,7 +37,7 @@ A comprehensive proxy stability testing system that evaluates **static residenti
 
 | Service | Language | Port(s) | Role |
 |---------|----------|---------|------|
-| **Runner** | Go | :9090 | Long-running test engine. 7 goroutines per proxy: HTTP, HTTPS, WS, WS-collector, Burst, Summary, Reporter |
+| **Runner** | Go | :9090 | Long-running test engine. 8 goroutines per proxy: HTTP, HTTPS, WS, WS-collector, Burst, Summary, Reporter, IP-recheck |
 | **API** | Node.js/TypeScript (Express) | :8000 | Controller API. CRUD providers/proxies/runs, trigger Runner, serve results |
 | **Target** | Node.js/TypeScript | :3001 (HTTP), :3443 (HTTPS) | Self-hosted target service. Endpoints: /echo, /ip, /large, /slow, /health, /ws-echo |
 | **Dashboard** | Next.js 14 + Tailwind CSS | :3000 | UI for managing providers/proxies, starting tests, viewing results/charts |
@@ -201,12 +201,13 @@ proxy-stability-test/
 │       └── SPRINT-4-EXPLANATION.md
 │
 ├── changelog/
-│   └── CHANGELOG.md                    # Full version history (v0.1 - v2.1)
+│   └── CHANGELOG.md                    # Full version history (v0.1 - v6.1)
 │
-├── database/                           # 2 files
+├── database/                           # 3 files
 │   ├── schema.sql                      # Full consolidated schema (7 tables)
 │   └── migrations/
-│       └── 001_initial_schema.sql
+│       ├── 001_initial_schema.sql
+│       └── 002_scoring_improvements.sql  # ip_clean_score, majority_tls_version, tls_version_score
 │
 ├── runner/                             # Go - 17 files
 │   ├── cmd/runner/main.go
@@ -215,24 +216,24 @@ proxy-stability-test/
 │   │   ├── config/config.go
 │   │   ├── proxy/                      # dialer, http_tester, https_tester, ws_tester, tls_inspector
 │   │   ├── ipcheck/                    # blacklist (DNSBL 4 servers), geoip (ip-api.com)
-│   │   ├── engine/                     # orchestrator (7 goroutines), scheduler, result_collector
+│   │   ├── engine/                     # orchestrator (8 goroutines + IP recheck), scheduler, result_collector
 │   │   ├── reporter/                   # api_reporter (HTTP/WS/IP/summary), db_reporter
-│   │   ├── scoring/scorer.go           # 5-component scoring with weight redistribution
-│   │   └── domain/types.go             # HTTPSample, WSSample, IPCheckResult, RunSummary, BurstConfig
+│   │   ├── scoring/scorer.go           # 5-component scoring, configurable thresholds, weight redistribution
+│   │   └── domain/types.go             # HTTPSample, WSSample, IPCheckResult, RunSummary, ScoringConfig
 │   ├── go.mod / go.sum                 # gorilla/websocket v1.5.3
 │   └── Dockerfile
 │
-├── api/                                # Node.js/TypeScript - ~15 files
+├── api/                                # Node.js/TypeScript - 15 files
 │   ├── src/
 │   │   ├── index.ts
 │   │   ├── db/pool.ts
 │   │   ├── routes/                     # providers, proxies, runs, results, export
 │   │   ├── services/                   # runService, scoringService, exportService
-│   │   └── middleware/                  # pagination, errorHandler
+│   │   └── middleware/                  # pagination (MAX_LIMIT 5000), errorHandler
 │   ├── package.json / tsconfig.json
 │   └── Dockerfile
 │
-├── target/                             # Node.js/TypeScript - ~13 files
+├── target/                             # Node.js/TypeScript - 7 src files
 │   ├── src/
 │   │   ├── index.ts                    # HTTP (:3001) + HTTPS (:3443)
 │   │   ├── routes/                     # echo, ip, large, slow, health
@@ -241,31 +242,38 @@ proxy-stability-test/
 │   ├── package.json / tsconfig.json
 │   └── Dockerfile
 │
-└── dashboard/                          # Next.js 14 + Tailwind CSS - ~56 files (Sprint 3)
+└── dashboard/                          # Next.js 14 + Tailwind CSS - 71 src files
     ├── src/
-    │   ├── app/                        # Pages: overview, providers, runs, run detail
+    │   ├── app/                        # Pages: overview, providers, runs, run detail, compare
     │   │   ├── page.tsx                # Overview (stat cards, active runs, recent results)
     │   │   ├── providers/page.tsx      # Provider CRUD with inline proxy expansion
     │   │   ├── runs/page.tsx           # Runs list with status filter tabs
-    │   │   └── runs/[runId]/page.tsx   # Run detail (4 tabs: HTTP/WS/IP/Score, realtime polling 3s)
+    │   │   ├── runs/[runId]/page.tsx   # Run detail (6 tabs: HTTP/WS/IP/Score/Charts/Errors, polling 3s)
+    │   │   └── compare/page.tsx        # Provider comparison (radar chart + table)
     │   ├── lib/                        # api-client (fetch wrapper), logger (pino)
-    │   ├── hooks/                      # 5 hooks: usePolling, useProviders, useProxies, useRuns, useRunDetail
+    │   ├── hooks/                      # 10 hooks: usePolling, useProviders, useProxies, useRuns, useRunDetail,
+    │   │                               #   useChartData, useExport, useCompare, useErrorLogs, useSummaryHistory
     │   ├── components/
+    │   │   ├── charts/                 # 8 files: ChartContainer, ChartTooltip, ChartErrorBoundary, chart-utils,
+    │   │   │                           #   LatencyChart, UptimeTimeline, ScoreGauge, ScoreHistoryChart
+    │   │   ├── compare/                # 3 files: ProviderSelect, RadarCompareChart, ComparisonTable
     │   │   ├── ui/                     # 11 reusable components (Button, Badge, Modal, Table, etc.)
-    │   │   ├── layout/                 # Sidebar
+    │   │   ├── layout/                 # Sidebar (4 nav items)
     │   │   ├── providers/              # ProviderList, ProviderForm, DeleteProviderDialog
     │   │   ├── proxies/                # ProxyList, ProxyForm, ProxyCard, DeleteProxyDialog
-    │   │   ├── test/                   # ProxySelector, TestConfigForm, StartTestDialog
-    │   │   ├── runs/                   # RunHeader, RunSummaryCards (6), RunMetricsDetail (5-comp),
-    │   │   │                           #   RunHttpSamples, RunWSSamples, RunIPCheck, RunScoreBreakdown, etc.
+    │   │   ├── test/                   # ProxySelector, TestConfigForm (+ scoring thresholds), StartTestDialog
+    │   │   ├── runs/                   # 14 files: RunHeader, RunSummaryCards, RunMetricsDetail, RunHttpSamples,
+    │   │   │                           #   RunWSSamples, RunIPCheck, RunScoreBreakdown, ExportButton,
+    │   │   │                           #   ErrorLogViewer, ErrorLogFilters, RunsList, RunsFilter, RunStatusBadge, StopTestButton
     │   │   └── overview/               # StatCards, ActiveRunsList, RecentResultsList
-    │   └── types/index.ts              # +WsSample, +IPCheckResult
+    │   └── types/index.ts              # All types: Provider, Proxy, TestRun, RunSummary, HttpSample,
+    │                                   #   WsSample, IPCheckResult, ScoringConfig, ErrorLogEntry, ProviderComparison
     ├── tailwind.config.ts / postcss.config.js
-    ├── package.json / tsconfig.json
+    ├── package.json / tsconfig.json    # recharts ^2.12.0
     └── Dockerfile                      # Multi-stage: deps → builder → runner (standalone)
 ```
 
-**Total: ~93 source files** across all services (Sprint 1 + Sprint 2 + Sprint 3).
+**Total: ~135 source files** across all services (Sprint 1 + Sprint 2 + Sprint 3 + Sprint 4).
 
 ## Development Roadmap
 
@@ -274,7 +282,7 @@ proxy-stability-test/
 | **1** | **DONE** | Foundation | Target (HTTP+HTTPS), API CRUD, Runner HTTP/HTTPS testers, Engine, Reporter, Scorer (3 components), E2E |
 | **2** | **DONE** | Dashboard UI | Next.js setup, Tailwind CSS, API client + hooks, Provider/Proxy CRUD, Start/Stop flow, Runs list, Run detail, Overview |
 | **3** | **DONE** | WS + Security | WS echo rewrite, WS/WSS tester (gorilla/websocket), IP check (DNSBL + GeoIP), Burst test, Scoring (5 components), API WS/IP endpoints, Dashboard 4 tabs |
-| **4** | Not started | Advanced Dashboard + Scoring | recharts charts, Export JSON/CSV, Provider comparison (radar chart), Error log viewer, Scoring improvements (IP stability re-check, gradient IP, TLS version, configurable thresholds) |
+| **4** | **DONE** | Advanced Dashboard + Scoring | recharts charts (Latency/Uptime/ScoreGauge/ScoreHistory), Export JSON/CSV, Provider comparison (radar chart), Error log viewer, Scoring improvements (IP re-check, gradient IP, TLS version, configurable thresholds) |
 
 ## Database Schema
 

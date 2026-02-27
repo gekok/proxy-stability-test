@@ -84,7 +84,8 @@ func (c *ResultCollector) ComputeSummary(allSamples []domain.HTTPSample) domain.
 		} else {
 			httpCount++
 		}
-		if s.ErrorType == "" {
+		// Success = no connection error AND valid HTTP status (2xx/3xx)
+		if s.ErrorType == "" && s.StatusCode > 0 && s.StatusCode < 400 {
 			successCount++
 		} else {
 			errorCount++
@@ -241,6 +242,9 @@ func (c *ResultCollector) ComputeWSSummary(summary *domain.RunSummary, wsSamples
 
 	if totalSent > 0 {
 		summary.WSDropRate = float64(totalDrops) / float64(totalSent)
+	} else if successCount == 0 {
+		// All connections failed, no messages sent → treat as 100% drop
+		summary.WSDropRate = 1.0
 	}
 
 	if len(holdTimes) > 0 {

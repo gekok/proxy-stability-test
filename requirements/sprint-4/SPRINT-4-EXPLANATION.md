@@ -1,5 +1,7 @@
 # Giải thích Sprint 4 — Advanced Dashboard + Export
 
+> **Status: DONE** (2026-02-27) — All 11 tasks implemented + 6 post-implementation bugs fixed.
+
 ---
 
 ## 0. Sprint 4 làm gì?
