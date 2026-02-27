@@ -26,16 +26,17 @@ type BurstConfig struct {
 }
 
 type RunConfig struct {
-	RunID              string       `json:"run_id"`
-	Proxy              ProxyConfig  `json:"proxy"`
-	Target             TargetConfig `json:"target"`
-	HTTPRPM            int          `json:"http_rpm"`
-	HTTPSRPM           int          `json:"https_rpm"`
-	WSMessagesPerMin   int          `json:"ws_messages_per_minute"`
-	RequestTimeoutMS   int          `json:"request_timeout_ms"`
-	WarmupRequests     int          `json:"warmup_requests"`
-	SummaryIntervalSec int          `json:"summary_interval_sec"`
-	Burst              *BurstConfig `json:"burst,omitempty"`
+	RunID              string        `json:"run_id"`
+	Proxy              ProxyConfig   `json:"proxy"`
+	Target             TargetConfig  `json:"target"`
+	HTTPRPM            int           `json:"http_rpm"`
+	HTTPSRPM           int           `json:"https_rpm"`
+	WSMessagesPerMin   int           `json:"ws_messages_per_minute"`
+	RequestTimeoutMS   int           `json:"request_timeout_ms"`
+	WarmupRequests     int           `json:"warmup_requests"`
+	SummaryIntervalSec int           `json:"summary_interval_sec"`
+	Burst              *BurstConfig  `json:"burst,omitempty"`
+	ScoringCfg         ScoringConfig `json:"scoring_config"`
 }
 
 type TriggerPayload struct {
@@ -50,12 +51,29 @@ type TriggerRun struct {
 }
 
 type TriggerRunConfig struct {
-	HTTPRPM            int `json:"http_rpm"`
-	HTTPSRPM           int `json:"https_rpm"`
-	WSMessagesPerMin   int `json:"ws_messages_per_minute"`
-	RequestTimeoutMS   int `json:"request_timeout_ms"`
-	WarmupRequests     int `json:"warmup_requests"`
-	SummaryIntervalSec int `json:"summary_interval_sec"`
+	HTTPRPM            int            `json:"http_rpm"`
+	HTTPSRPM           int            `json:"https_rpm"`
+	WSMessagesPerMin   int            `json:"ws_messages_per_minute"`
+	RequestTimeoutMS   int            `json:"request_timeout_ms"`
+	WarmupRequests     int            `json:"warmup_requests"`
+	SummaryIntervalSec int            `json:"summary_interval_sec"`
+	ScoringConfig      *ScoringConfig `json:"scoring_config,omitempty"`
+}
+
+type ScoringConfig struct {
+	LatencyThresholdMs float64 `json:"latency_threshold_ms"`
+	JitterThresholdMs  float64 `json:"jitter_threshold_ms"`
+	WSHoldTargetMs     float64 `json:"ws_hold_target_ms"`
+	IPCheckIntervalSec int     `json:"ip_check_interval_sec"`
+}
+
+func DefaultScoringConfig() ScoringConfig {
+	return ScoringConfig{
+		LatencyThresholdMs: 500,
+		JitterThresholdMs:  100,
+		WSHoldTargetMs:     60000,
+		IPCheckIntervalSec: 60,
+	}
 }
 
 type HTTPSample struct {
@@ -155,6 +173,10 @@ type RunSummary struct {
 	IPClean    *bool `json:"ip_clean"`
 	IPGeoMatch *bool `json:"ip_geo_match"`
 	IPStable   *bool `json:"ip_stable"`
+	// Sprint 4: new fields
+	IPCleanScore       float64 `json:"ip_clean_score"`
+	MajorityTLSVersion string  `json:"majority_tls_version,omitempty"`
+	TLSVersionScore    float64 `json:"tls_version_score"`
 	// Scores
 	ScoreUptime   float64 `json:"score_uptime"`
 	ScoreLatency  float64 `json:"score_latency"`

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { TestRun, formatDuration } from '@/types';
 import { RunStatusBadge } from './RunStatusBadge';
 import { StopTestButton } from './StopTestButton';
+import { ExportButton } from './ExportButton';
 
 interface RunHeaderProps {
   run: TestRun;
@@ -46,7 +47,10 @@ export function RunHeader({ run, onStop }: RunHeaderProps) {
             <span className="text-sm text-gray-500">{duration}</span>
           </div>
         </div>
-        <StopTestButton run={run} onStop={onStop} />
+        <div className="flex items-center gap-2">
+          <ExportButton runId={run.id} disabled={run.status === 'pending'} />
+          <StopTestButton run={run} onStop={onStop} />
+        </div>
       </div>
     </div>
   );

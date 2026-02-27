@@ -6,7 +6,7 @@ export interface PaginationParams {
 }
 
 const DEFAULT_LIMIT = 20;
-const MAX_LIMIT = 100;
+const MAX_LIMIT = 5000;
 
 export function parsePagination(req: Request): PaginationParams {
   const limitParam = parseInt(req.query.limit as string, 10);

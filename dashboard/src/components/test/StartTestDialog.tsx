@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { ProxySelector } from './ProxySelector';
 import { TestConfigForm } from './TestConfigForm';
 import { apiClient } from '@/lib/api-client';
-import { Provider, Proxy, TestRun, RunConfig, DEFAULT_RUN_CONFIG } from '@/types';
+import { Provider, Proxy, TestRun, RunConfig, ScoringConfig, DEFAULT_RUN_CONFIG, DEFAULT_SCORING_CONFIG } from '@/types';
 
 interface StartTestDialogProps {
   isOpen: boolean;
@@ -23,6 +23,7 @@ export function StartTestDialog({ isOpen, onClose, providers, proxies }: StartTe
   const [step, setStep] = useState<Step>('select');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [config, setConfig] = useState<RunConfig>({ ...DEFAULT_RUN_CONFIG });
+  const [scoringConfig, setScoringConfig] = useState<ScoringConfig>({ ...DEFAULT_SCORING_CONFIG });
   const [progress, setProgress] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,6 +32,7 @@ export function StartTestDialog({ isOpen, onClose, providers, proxies }: StartTe
       setStep('select');
       setSelectedIds([]);
       setConfig({ ...DEFAULT_RUN_CONFIG });
+      setScoringConfig({ ...DEFAULT_SCORING_CONFIG });
       setProgress([]);
       setError(null);
       onClose();
@@ -87,7 +89,14 @@ export function StartTestDialog({ isOpen, onClose, providers, proxies }: StartTe
     setProgress(prev => [...prev, 'Triggering runner...']);
 
     try {
-      await apiClient.post('/runs/start', { run_ids: runIds });
+      const isDefaultScoring = scoringConfig.latency_threshold_ms === 500
+        && scoringConfig.jitter_threshold_ms === 100
+        && scoringConfig.ws_hold_target_ms === 60000
+        && scoringConfig.ip_check_interval_sec === 60;
+      await apiClient.post('/runs/start', {
+        run_ids: runIds,
+        ...(!isDefaultScoring ? { scoring_config: scoringConfig } : {}),
+      });
     } catch (err) {
       console.error('[test] Test start fail (trigger)', {
         run_ids: runIds,
@@ -139,7 +148,7 @@ export function StartTestDialog({ isOpen, onClose, providers, proxies }: StartTe
 
       {step === 'configure' && (
         <>
-          <TestConfigForm config={config} onChange={setConfig} />
+          <TestConfigForm config={config} onChange={setConfig} scoringConfig={scoringConfig} onScoringChange={setScoringConfig} />
           <div className="flex justify-between mt-6">
             <Button variant="ghost" onClick={() => setStep('select')}>Back</Button>
             <div className="flex gap-3">

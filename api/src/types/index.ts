@@ -115,6 +115,9 @@ export interface RunSummary {
   score_ws?: number | null;
   score_security?: number | null;
   score_total?: number | null;
+  ip_clean_score?: number | null;
+  majority_tls_version?: string | null;
+  tls_version_score?: number | null;
   computed_at: string;
 }
 
@@ -122,4 +125,60 @@ export interface PaginationResult {
   has_more: boolean;
   next_cursor: string | null;
   total_count: number;
+}
+
+export interface RunExport {
+  meta: {
+    run_id: string;
+    proxy_label: string;
+    provider_name: string;
+    status: string;
+    started_at: string;
+    stopped_at?: string;
+    duration_ms?: number;
+    exported_at: string;
+    format: 'json' | 'csv';
+  };
+  summary: RunSummary | null;
+  scoring: {
+    score_total: number;
+    grade: string;
+    components: {
+      uptime: { score: number; weight: number };
+      latency: { score: number; weight: number };
+      jitter: { score: number; weight: number };
+      ws: { score: number; weight: number };
+      security: { score: number; weight: number };
+    };
+  } | null;
+  http_samples: HttpSample[];
+  ws_samples: unknown[];
+  ip_checks: unknown[];
+}
+
+export interface ProviderComparison {
+  provider_id: string;
+  provider_name: string;
+  proxy_count: number;
+  total_runs: number;
+  avg_score_total: number;
+  avg_score_uptime: number;
+  avg_score_latency: number;
+  avg_score_jitter: number;
+  avg_score_ws: number;
+  avg_score_security: number;
+  avg_uptime_ratio: number;
+  avg_ttfb_p95_ms: number;
+  avg_ws_rtt_ms: number;
+  ip_clean_ratio: number;
+  geo_match_ratio: number;
+  best_grade: string;
+  avg_grade: string;
+}
+
+export interface ScoringConfig {
+  latency_threshold_ms: number;
+  jitter_threshold_ms: number;
+  ws_hold_target_ms: number;
+  ip_check_interval_sec: number;
 }

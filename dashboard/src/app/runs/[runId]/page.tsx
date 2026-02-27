@@ -11,6 +11,16 @@ import { RunHttpSamples } from '@/components/runs/RunHttpSamples';
 import { RunWSSamples } from '@/components/runs/RunWSSamples';
 import { RunIPCheck } from '@/components/runs/RunIPCheck';
 import { RunScoreBreakdown } from '@/components/runs/RunScoreBreakdown';
+import { ErrorLogViewer } from '@/components/runs/ErrorLogViewer';
+import { ErrorLogFilters } from '@/components/runs/ErrorLogFilters';
+import { useErrorLogs } from '@/hooks/useErrorLogs';
+import { useChartData } from '@/hooks/useChartData';
+import { useSummaryHistory } from '@/hooks/useSummaryHistory';
+import { ChartErrorBoundary } from '@/components/charts/ChartErrorBoundary';
+import { LatencyChart } from '@/components/charts/LatencyChart';
+import { UptimeTimeline } from '@/components/charts/UptimeTimeline';
+import { ScoreGauge } from '@/components/charts/ScoreGauge';
+import { ScoreHistoryChart } from '@/components/charts/ScoreHistoryChart';
 import { ErrorAlert } from '@/components/ui/ErrorAlert';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 
@@ -19,6 +29,8 @@ const TABS = [
   { id: 'ws', label: 'WS Connections' },
   { id: 'ip', label: 'IP Check' },
   { id: 'score', label: 'Score Breakdown' },
+  { id: 'charts', label: 'Charts' },
+  { id: 'errors', label: 'Errors' },
 ] as const;
 
 type TabId = typeof TABS[number]['id'];
@@ -26,10 +38,13 @@ type TabId = typeof TABS[number]['id'];
 export default function RunDetailPage() {
   const { runId } = useParams<{ runId: string }>();
   const { run, summary, samples, wsSamples, ipChecks, loading, error, fetchRunDetail, stopRun, isActive } = useRunDetail(runId);
+  const { entries: errorEntries, allEntries: allErrors, loading: errorsLoading, filters: errorFilters, updateFilter: updateErrorFilter, errorTypes, fetchErrorLogs } = useErrorLogs(runId);
+  const { latencyData, uptimeData, loading: chartsLoading } = useChartData(runId, isActive);
+  const scoreHistory = useSummaryHistory(summary);
   const pollingStartedRef = useRef(false);
   const [activeTab, setActiveTab] = useState<TabId>('http');
 
-  useEffect(() => { fetchRunDetail(); }, [fetchRunDetail]);
+  useEffect(() => { fetchRunDetail(); fetchErrorLogs(); }, [fetchRunDetail, fetchErrorLogs]);
 
   usePolling(fetchRunDetail, {
     interval: 3000,
@@ -96,6 +111,11 @@ export default function RunDetailPage() {
                   {ipChecks.length}
                 </span>
               )}
+              {tab.id === 'errors' && allErrors.length > 0 && (
+                <span className="ml-1.5 text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">
+                  {allErrors.length}
+                </span>
+              )}
             </button>
           ))}
         </nav>
@@ -106,6 +126,32 @@ export default function RunDetailPage() {
       {activeTab === 'ws' && <RunWSSamples samples={wsSamples} />}
       {activeTab === 'ip' && <RunIPCheck checks={ipChecks} />}
       {activeTab === 'score' && <RunScoreBreakdown summary={summary} />}
+      {activeTab === 'charts' && (
+        <div className="space-y-6">
+          <div className="flex items-start gap-6">
+            <ChartErrorBoundary title="Score Gauge">
+              <ScoreGauge score={summary?.score_total} />
+            </ChartErrorBoundary>
+            <div className="flex-1">
+              <ChartErrorBoundary title="Score History">
+                <ScoreHistoryChart data={scoreHistory} />
+              </ChartErrorBoundary>
+            </div>
+          </div>
+          <ChartErrorBoundary title="Latency Chart">
+            <LatencyChart data={latencyData} loading={chartsLoading} />
+          </ChartErrorBoundary>
+          <ChartErrorBoundary title="Uptime Timeline">
+            <UptimeTimeline data={uptimeData} loading={chartsLoading} />
+          </ChartErrorBoundary>
+        </div>
+      )}
+      {activeTab === 'errors' && (
+        <div>
+          <ErrorLogFilters filters={errorFilters} errorTypes={errorTypes} onChange={updateErrorFilter} />
+          <ErrorLogViewer entries={errorEntries} loading={errorsLoading} />
+        </div>
+      )}
     </div>
   );
 }

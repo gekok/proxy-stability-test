@@ -114,6 +114,23 @@ func (c *ResultCollector) ComputeSummary(allSamples []domain.HTTPSample) domain.
 	// Uptime ratio
 	summary.UptimeRatio = float64(successCount) / float64(len(valid))
 
+	// Sprint 4: compute majority TLS version
+	tlsVersionCounts := make(map[string]int)
+	for _, s := range valid {
+		if s.IsHTTPS && s.TLSVersion != "" && s.ErrorType == "" {
+			tlsVersionCounts[s.TLSVersion]++
+		}
+	}
+	if len(tlsVersionCounts) > 0 {
+		maxCount := 0
+		for ver, count := range tlsVersionCounts {
+			if count > maxCount {
+				maxCount = count
+				summary.MajorityTLSVersion = ver
+			}
+		}
+	}
+
 	// Extract timing fields
 	var ttfbs, totals, tcpConnects, tlsHandshakes []float64
 	for _, s := range valid {

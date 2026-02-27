@@ -140,6 +140,9 @@ export interface RunSummary {
   score_ws: number | null;
   score_security: number | null;
   score_total: number | null;
+  ip_clean_score?: number | null;
+  majority_tls_version?: string | null;
+  tls_version_score?: number | null;
   computed_at: string;
 }
 
@@ -206,6 +209,102 @@ export interface IPCheckResult {
   ip_changes: number;
   checked_at: string;
 }
+
+// === Chart Data Types ===
+export interface LatencyDataPoint {
+  time: string;
+  timestamp: number;
+  p50: number;
+  p95: number;
+  p99: number;
+  sample_count: number;
+}
+
+export interface UptimeDataPoint {
+  time: string;
+  timestamp: number;
+  success_count: number;
+  error_count: number;
+  uptime_ratio: number;
+  total: number;
+}
+
+export interface SummarySnapshot {
+  timestamp: number;
+  time: string;
+  score_total: number;
+  grade: string;
+  score_uptime: number;
+  score_latency: number;
+  score_jitter: number;
+  score_ws?: number;
+  score_security?: number;
+  uptime_ratio: number;
+}
+
+// === Error Log Types ===
+export interface ErrorLogEntry {
+  id: string;
+  source: 'http' | 'ws' | 'ip';
+  error_type: string;
+  error_message?: string;
+  protocol?: string;
+  method?: string;
+  target_url?: string;
+  status_code?: number;
+  timing?: {
+    tcp_connect_ms?: number;
+    tls_handshake_ms?: number;
+    ttfb_ms?: number;
+    total_ms?: number;
+    handshake_ms?: number;
+    message_rtt_ms?: number;
+  };
+  seq?: number;
+  measured_at: string;
+}
+
+export interface ErrorLogFilterState {
+  source: 'http' | 'ws' | 'ip' | 'all';
+  error_type: string;
+  protocol: string;
+}
+
+// === Provider Comparison ===
+export interface ProviderComparison {
+  provider_id: string;
+  provider_name: string;
+  proxy_count: number;
+  total_runs: number;
+  avg_score_total: number;
+  avg_score_uptime: number;
+  avg_score_latency: number;
+  avg_score_jitter: number;
+  avg_score_ws: number;
+  avg_score_security: number;
+  avg_uptime_ratio: number;
+  avg_ttfb_p95_ms: number;
+  avg_ws_rtt_ms: number;
+  ip_clean_ratio: number;
+  geo_match_ratio: number;
+  best_grade: string;
+  avg_grade: string;
+}
+
+// === Scoring Config ===
+export interface ScoringConfig {
+  latency_threshold_ms: number;
+  jitter_threshold_ms: number;
+  ws_hold_target_ms: number;
+  ip_check_interval_sec: number;
+}
+
+export const DEFAULT_SCORING_CONFIG: ScoringConfig = {
+  latency_threshold_ms: 500,
+  jitter_threshold_ms: 100,
+  ws_hold_target_ms: 60000,
+  ip_check_interval_sec: 60,
+};
 
 // === Default Config ===
 export const DEFAULT_RUN_CONFIG: RunConfig = {

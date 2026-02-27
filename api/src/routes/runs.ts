@@ -58,13 +58,13 @@ runsRouter.post('/', async (req: Request, res: Response, next: NextFunction) => 
 // POST /api/v1/runs/start — Trigger runner for pending runs
 runsRouter.post('/start', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { run_ids } = req.body;
+    const { run_ids, scoring_config } = req.body;
 
     if (!run_ids || !Array.isArray(run_ids) || run_ids.length === 0) {
       return res.status(400).json({ error: { message: 'run_ids array is required' } });
     }
 
-    const result = await triggerRunner(run_ids);
+    const result = await triggerRunner(run_ids, scoring_config);
     res.json({ data: result });
   } catch (err) {
     next(err);
@@ -359,11 +359,12 @@ runsRouter.post('/:id/summary', async (req: Request, res: Response, next: NextFu
         total_bytes_sent, total_bytes_received, avg_throughput_bps,
         ip_clean, ip_geo_match, ip_stable,
         score_uptime, score_latency, score_jitter, score_ws, score_security, score_total,
+        ip_clean_score, majority_tls_version, tls_version_score,
         computed_at
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
         $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33,
-        $34, $35, $36, $37, $38, $39, $40, $41, $42, now()
+        $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, now()
       )
       ON CONFLICT (run_id) DO UPDATE SET
         http_sample_count = EXCLUDED.http_sample_count,
@@ -406,6 +407,9 @@ runsRouter.post('/:id/summary', async (req: Request, res: Response, next: NextFu
         score_ws = EXCLUDED.score_ws,
         score_security = EXCLUDED.score_security,
         score_total = EXCLUDED.score_total,
+        ip_clean_score = EXCLUDED.ip_clean_score,
+        majority_tls_version = EXCLUDED.majority_tls_version,
+        tls_version_score = EXCLUDED.tls_version_score,
         computed_at = now()
       RETURNING *`,
       [
@@ -420,6 +424,7 @@ runsRouter.post('/:id/summary', async (req: Request, res: Response, next: NextFu
         s.total_bytes_sent || 0, s.total_bytes_received || 0, s.avg_throughput_bps ?? null,
         s.ip_clean ?? null, s.ip_geo_match ?? null, s.ip_stable ?? null,
         s.score_uptime ?? null, s.score_latency ?? null, s.score_jitter ?? null, s.score_ws ?? null, s.score_security ?? null, s.score_total ?? null,
+        s.ip_clean_score ?? null, s.majority_tls_version ?? null, s.tls_version_score ?? null,
       ],
     );
 

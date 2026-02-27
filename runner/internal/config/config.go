@@ -29,6 +29,24 @@ func FromTrigger(tr domain.TriggerRun) domain.RunConfig {
 	cfg.WarmupRequests = withDefault(tr.Config.WarmupRequests, DefaultWarmupRequests)
 	cfg.SummaryIntervalSec = withDefault(tr.Config.SummaryIntervalSec, DefaultSummaryIntervalSec)
 
+	// Parse scoring config, use defaults for zero values
+	sc := domain.DefaultScoringConfig()
+	if tr.Config.ScoringConfig != nil {
+		if tr.Config.ScoringConfig.LatencyThresholdMs > 0 {
+			sc.LatencyThresholdMs = tr.Config.ScoringConfig.LatencyThresholdMs
+		}
+		if tr.Config.ScoringConfig.JitterThresholdMs > 0 {
+			sc.JitterThresholdMs = tr.Config.ScoringConfig.JitterThresholdMs
+		}
+		if tr.Config.ScoringConfig.WSHoldTargetMs > 0 {
+			sc.WSHoldTargetMs = tr.Config.ScoringConfig.WSHoldTargetMs
+		}
+		if tr.Config.ScoringConfig.IPCheckIntervalSec > 0 {
+			sc.IPCheckIntervalSec = tr.Config.ScoringConfig.IPCheckIntervalSec
+		}
+	}
+	cfg.ScoringCfg = sc
+
 	return cfg
 }
 

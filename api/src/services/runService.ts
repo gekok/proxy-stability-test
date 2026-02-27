@@ -6,7 +6,7 @@ const RUNNER_URL = process.env.RUNNER_URL || 'http://runner:9090';
 const TARGET_HTTP_URL = process.env.TARGET_HTTP_URL || 'http://target:3001';
 const TARGET_HTTPS_URL = process.env.TARGET_HTTPS_URL || 'https://target:3443';
 
-export async function triggerRunner(runIds: string[]): Promise<{ triggered: number; failed: number; errors: string[] }> {
+export async function triggerRunner(runIds: string[], scoringConfig?: Record<string, unknown>): Promise<{ triggered: number; failed: number; errors: string[] }> {
   const runs: any[] = [];
   const errors: string[] = [];
 
@@ -69,6 +69,7 @@ export async function triggerRunner(runIds: string[]): Promise<{ triggered: numb
         request_timeout_ms: run.request_timeout_ms,
         warmup_requests: run.warmup_requests,
         summary_interval_sec: run.summary_interval_sec,
+        ...(scoringConfig ? { scoring_config: scoringConfig } : {}),
       },
       target: {
         http_url: TARGET_HTTP_URL,

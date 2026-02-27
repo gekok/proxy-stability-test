@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { TestRun, formatDuration } from '@/types';
 import { RunStatusBadge } from './RunStatusBadge';
+import { ExportButton } from './ExportButton';
 
 interface RunsListProps {
   runs: TestRun[];
@@ -33,6 +34,7 @@ export function RunsList({ runs, loading }: RunsListProps) {
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-24">Samples</th>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-28">Duration</th>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-36">Created</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-20">Export</th>
           </tr>
         </thead>
         <tbody className="bg-white divide-y divide-gray-200">
@@ -68,6 +70,11 @@ export function RunsList({ runs, loading }: RunsListProps) {
                 <td className="px-4 py-3 text-sm text-gray-500">{duration}</td>
                 <td className="px-4 py-3 text-sm text-gray-500">
                   {new Date(run.created_at).toLocaleString()}
+                </td>
+                <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                  {run.status === 'completed' && (
+                    <ExportButton runId={run.id} />
+                  )}
                 </td>
               </tr>
             );

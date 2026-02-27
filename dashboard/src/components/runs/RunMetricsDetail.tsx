@@ -82,6 +82,22 @@ export function RunMetricsDetail({ summary, run }: RunMetricsDetailProps) {
                 <td className="pr-6 py-1">{formatMs(summary.tls_p95_ms)}</td>
                 <td className="pr-6 py-1">{formatMs(summary.tls_p99_ms)}</td>
               </tr>
+              {summary.majority_tls_version && (
+                <tr>
+                  <td className="pr-6 py-1 text-gray-700">TLS Version</td>
+                  <td className="pr-6 py-1 font-mono" colSpan={2}>{summary.majority_tls_version}</td>
+                  <td className="pr-6 py-1">
+                    {summary.tls_version_score != null && (
+                      <span className={`font-mono font-semibold ${
+                        summary.tls_version_score >= 0.9 ? 'text-green-600' :
+                        summary.tls_version_score >= 0.6 ? 'text-yellow-600' : 'text-red-600'
+                      }`}>
+                        {summary.tls_version_score.toFixed(1)}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              )}
               <tr>
                 <td className="pr-6 py-1 text-gray-700">TCP Connect</td>
                 <td className="pr-6 py-1">{formatMs(summary.tcp_connect_p50_ms)}</td>

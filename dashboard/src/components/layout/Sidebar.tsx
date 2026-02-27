@@ -7,6 +7,7 @@ const navItems = [
   { href: '/',          label: 'Overview',  icon: 'Home' },
   { href: '/providers', label: 'Providers', icon: 'Building' },
   { href: '/runs',      label: 'Test Runs', icon: 'Play' },
+  { href: '/compare',   label: 'Compare',   icon: 'Chart' },
 ];
 
 export function Sidebar() {

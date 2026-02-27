@@ -34,6 +34,7 @@ type Orchestrator struct {
 	allSamples   []domain.HTTPSample  // accumulated for summary
 	allWSSamples []domain.WSSample    // accumulated for WS summary
 	ipResult     *domain.IPCheckResult // IP check result
+	ipMu         sync.Mutex           // protects ipResult during re-checks
 }
 
 // NewOrchestrator creates a new orchestrator for a proxy test run
@@ -204,6 +205,13 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		return o.runBurstLoop(gCtx, sampleChan)
 	})
 
+	// Goroutine 8: IP re-check (Sprint 4)
+	if o.ipResult != nil && o.config.ScoringCfg.IPCheckIntervalSec > 0 {
+		g.Go(func() error {
+			return o.ipReCheckLoop(gCtx)
+		})
+	}
+
 	// Goroutine 7: Collect samples from channel → batch report
 	g.Go(func() error {
 		return o.collectAndReport(gCtx, sampleChan)
@@ -228,12 +236,21 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 
 	summary := o.collector.ComputeSummary(o.allSamples)
 	o.collector.ComputeWSSummary(&summary, o.allWSSamples)
+	o.ipMu.Lock()
 	if o.ipResult != nil {
 		summary.IPClean = &o.ipResult.IsClean
 		summary.IPGeoMatch = &o.ipResult.GeoMatch
 		summary.IPStable = &o.ipResult.IPStable
+		// Sprint 4: gradient IP clean score
+		if o.ipResult.BlacklistQueried > 0 {
+			score := 1.0 - float64(o.ipResult.BlacklistListed)/float64(o.ipResult.BlacklistQueried)
+			summary.IPCleanScore = score
+		} else {
+			summary.IPCleanScore = 1.0
+		}
 	}
-	scoring.ComputeScore(&summary)
+	o.ipMu.Unlock()
+	scoring.ComputeScore(&summary, o.config.ScoringCfg)
 
 	o.logger.Info("Final summary computed",
 		"phase", "final_summary",
@@ -268,12 +285,19 @@ func (o *Orchestrator) rollingSummary(ctx context.Context) error {
 		case <-ticker.C:
 			summary := o.collector.ComputeSummary(o.allSamples)
 			o.collector.ComputeWSSummary(&summary, o.allWSSamples)
+			o.ipMu.Lock()
 			if o.ipResult != nil {
 				summary.IPClean = &o.ipResult.IsClean
 				summary.IPGeoMatch = &o.ipResult.GeoMatch
 				summary.IPStable = &o.ipResult.IPStable
+				if o.ipResult.BlacklistQueried > 0 {
+					summary.IPCleanScore = 1.0 - float64(o.ipResult.BlacklistListed)/float64(o.ipResult.BlacklistQueried)
+				} else {
+					summary.IPCleanScore = 1.0
+				}
 			}
-			scoring.ComputeScore(&summary)
+			o.ipMu.Unlock()
+			scoring.ComputeScore(&summary, o.config.ScoringCfg)
 
 			o.logger.Info("Rolling summary",
 				"phase", "continuous",
@@ -385,6 +409,44 @@ func (o *Orchestrator) getIPViaProxy(ctx context.Context) string {
 		return strings.TrimSpace(string(body))
 	}
 	return ipResp.IP
+}
+
+// ipReCheckLoop periodically re-checks the proxy IP for stability (Sprint 4)
+func (o *Orchestrator) ipReCheckLoop(ctx context.Context) error {
+	interval := time.Duration(o.config.ScoringCfg.IPCheckIntervalSec) * time.Second
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			newIP := o.getIPViaProxy(ctx)
+			if newIP == "" {
+				o.logger.Warn("IP re-check failed",
+					"phase", "continuous",
+					"goroutine", "ip_recheck",
+				)
+				continue
+			}
+			o.ipMu.Lock()
+			if o.ipResult != nil && newIP != o.ipResult.ObservedIP {
+				o.logger.Warn("IP changed",
+					"module", "engine.orchestrator",
+					"phase", "continuous",
+					"old_ip", o.ipResult.ObservedIP,
+					"new_ip", newIP,
+					"proxy_id", o.config.Proxy.Label,
+					"run_id", o.config.RunID,
+				)
+				o.ipResult.IPStable = false
+				o.ipResult.IPChanges++
+				o.ipResult.ObservedIP = newIP
+			}
+			o.ipMu.Unlock()
+		}
+	}
 }
 
 // runBurstLoop runs burst tests periodically

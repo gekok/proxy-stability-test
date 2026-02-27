@@ -105,6 +105,24 @@ export function RunScoreBreakdown({ summary }: RunScoreBreakdownProps) {
         )}
       </div>
 
+      {/* Sprint 4: IP Clean Gradient */}
+      {summary.ip_clean_score != null && (
+        <div className="mt-4 pt-3 border-t">
+          <div className="flex items-center gap-3 text-sm">
+            <span className="text-gray-600 w-28">IP Clean Score:</span>
+            <div className="flex-1 bg-gray-100 rounded-full h-3 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-green-500 transition-all"
+                style={{ width: `${Math.round(summary.ip_clean_score * 100)}%` }}
+              />
+            </div>
+            <span className="font-mono text-sm w-14 text-right">
+              {(summary.ip_clean_score * 100).toFixed(0)}%
+            </span>
+          </div>
+        </div>
+      )}
+
       <p className="text-xs text-gray-400 mt-3">
         {hasWS && hasSecurity
           ? '5-component scoring: Uptime, Latency, Jitter, WebSocket, Security'
