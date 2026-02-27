@@ -1,6 +1,5 @@
 # Dependencies
 node_modules/
-go.sum
 
 # Build outputs
 dist/
