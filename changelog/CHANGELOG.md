@@ -441,7 +441,7 @@ Ghi lại toàn bộ quá trình phát triển project, từ lên plan đến im
 - **Task 9: Scoring Engine Improvements (Go Runner)**
   - IP stability periodic re-check goroutine (60s interval)
   - IP clean gradient scoring (`1 - listed/queried`)
-  - TLS version-based scoring (1.3→1.0, 1.2→0.7)
+  - TLS version-based scoring (1.3→1.0, 1.2→0.7, other→0.3, none→0.0)
   - `ScoringConfig` struct for configurable thresholds
 - **Task 10: Scoring Config API + Dashboard Integration**
   - DB migration: 3 new columns (`ip_clean_score`, `majority_tls_version`, `tls_version_score`)

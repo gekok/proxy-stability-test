@@ -334,7 +334,7 @@ Target WS echo:  connect + echo + hold timer → working (code 1000)
 | 1 | IP Stability hardcoded `true` | Periodic re-check every 60s (goroutine) |
 | 2 | IP Clean binary 0/1 | Gradient scoring: `1 - listed/queried` |
 | 3 | TLS scoring binary (has HTTPS = 1.0) | TLS 1.3=1.0, TLS 1.2=0.7, other=0.3 |
-| 4 | Scoring thresholds hardcoded | Configurable `ScoringConfig` (latency, jitter, ws_hold, burst_error) |
+| 4 | Scoring thresholds hardcoded | Configurable `ScoringConfig` (latency_threshold_ms, jitter_threshold_ms, ws_hold_target_ms, ip_check_interval_sec) |
 
 ### Build Verified (2026-02-27)
 

@@ -145,25 +145,31 @@ Click **Stop Test** when you have enough data. Export results as JSON or CSV. Co
 
 ## Scoring
 
-Each proxy receives a single score (0.0 - 1.0) based on 5 weighted components:
+Each proxy receives a score (0.0 - 1.0) based on 5 weighted components:
 
 ```
-score = 0.25 x Uptime
-      + 0.25 x Latency
-      + 0.15 x Jitter
-      + 0.15 x WebSocket
-      + 0.20 x Security
+Score = 0.25 × Uptime + 0.25 × Latency + 0.15 × Jitter + 0.15 × WS + 0.20 × Security
 ```
 
-| Grade | Score |
-|-------|-------|
-| A | >= 0.90 |
-| B | >= 0.75 |
-| C | >= 0.60 |
-| D | >= 0.40 |
-| F | < 0.40 |
+**Component formulas** (thresholds configurable per run):
 
-When test phases are skipped, weights are automatically redistributed among remaining components.
+| Component | Formula | Default |
+|-----------|---------|---------|
+| S_uptime | `success / total` (success = no error AND status 200-399) | — |
+| S_latency | `clamp(1 - TTFB_P95 / threshold, 0, 1)` | 500ms |
+| S_jitter | `clamp(1 - stddev / threshold, 0, 1)` | 100ms |
+| S_ws | `0.4×(1-errorRate) + 0.3×(1-dropRate) + 0.3×holdRatio` | hold target 60s |
+| S_security | `0.30×ipClean + 0.25×geoMatch + 0.25×ipStable + 0.20×tlsScore` | — |
+
+**Security sub-scores**: IP Clean = gradient `1 - listed/queried` (DNSBL 4 servers), Geo Match = country match (0/1), IP Stable = re-checked every 60s (0/1), TLS = 1.3→1.0, 1.2→0.7, other→0.3, none→0.0.
+
+**Grades**: A (≥0.90), B (≥0.75), C (≥0.60), D (≥0.40), F (<0.40)
+
+**Weight redistribution** when phases skipped:
+- All 5 active: `0.25×U + 0.25×L + 0.15×J + 0.15×WS + 0.20×S`
+- WS skipped: `0.294×U + 0.294×L + 0.176×J + 0.235×S`
+- Security skipped: `0.3125×U + 0.3125×L + 0.1875×J + 0.1875×WS`
+- Both skipped: `0.385×U + 0.385×L + 0.230×J`
 
 ## Run Status Flow
 

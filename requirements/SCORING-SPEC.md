@@ -558,10 +558,11 @@ if newIP != observedIP → IPStable = false, IPChanges++
 ```
 tlsScore = 1.0 nếu TLS 1.3 (majority)
 tlsScore = 0.7 nếu TLS 1.2
-tlsScore = 0.0 nếu < TLS 1.2 hoặc không có HTTPS
+tlsScore = 0.3 nếu TLS version khác (cũ hơn)
+tlsScore = 0.0 nếu không có HTTPS
 ```
 
-→ **Fix planned**: Sprint 4 Task 9.3 — `tlsVersionScore()` function, Task 10.1 — `majority_tls_version` + `tls_version_score` DB columns
+→ **Fixed**: Sprint 4 Task 9.3 — `tlsVersionScore()` function, Task 10.1 — `majority_tls_version` + `tls_version_score` DB columns
 
 ### 6.5 Trọng số không configurable
 

@@ -2288,7 +2288,7 @@ runner/internal/config/config.go          ← Parse ScoringConfig from trigger p
 - [ ] `ipResult.IPStable` set to `false` when IP changes, `IPChanges` incremented
 - [ ] Mutex protects `ipResult` from concurrent access
 - [ ] `ipCleanGradient()` returns `1 - listed/queried` (not binary)
-- [ ] `tlsVersionScore()` returns 1.0 for TLS 1.3, 0.7 for TLS 1.2, 0.0 otherwise
+- [ ] `tlsVersionScore()` returns 1.0 for TLS 1.3, 0.7 for TLS 1.2, 0.3 for other, 0.0 for none
 - [ ] `MajorityTLSVersion` computed in `ComputeSummary()`
 - [ ] `ComputeScore()` accepts `ScoringConfig` parameter
 - [ ] Default thresholds match current hardcoded values (500/100/60000/60)
@@ -2315,11 +2315,11 @@ ALTER TABLE run_summary ADD COLUMN IF NOT EXISTS tls_version_score DOUBLE PRECIS
 
 -- ip_clean_score: gradient score (0.0 - 1.0) thay vì binary
 -- majority_tls_version: 'TLS 1.3', 'TLS 1.2', etc.
--- tls_version_score: 1.0 (TLS 1.3), 0.7 (TLS 1.2), 0.0 (other)
+-- tls_version_score: 1.0 (TLS 1.3), 0.7 (TLS 1.2), 0.3 (other), 0.0 (none)
 
 COMMENT ON COLUMN run_summary.ip_clean_score IS 'Gradient IP clean score: 1 - (listed/queried). Sprint 4.';
 COMMENT ON COLUMN run_summary.majority_tls_version IS 'Most common TLS version in HTTPS samples. Sprint 4.';
-COMMENT ON COLUMN run_summary.tls_version_score IS 'TLS version score: 1.3=1.0, 1.2=0.7, other=0.0. Sprint 4.';
+COMMENT ON COLUMN run_summary.tls_version_score IS 'TLS version score: 1.3=1.0, 1.2=0.7, other=0.3, none=0.0. Sprint 4.';
 ```
 
 ### 10.2 API Integration

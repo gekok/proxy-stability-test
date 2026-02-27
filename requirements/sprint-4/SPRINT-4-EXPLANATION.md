@@ -468,7 +468,7 @@ Protocol: All | HTTP | HTTPS | WS | WSS
 
 3. TLS Version Scoring (phân biệt TLS 1.2 vs 1.3):
    Trước: Có HTTPS = 1.0, không có = 0.0
-   Sau:   TLS 1.3 = 1.0, TLS 1.2 = 0.7, khác = 0.0
+   Sau:   TLS 1.3 = 1.0, TLS 1.2 = 0.7, khác = 0.3, không có = 0.0
    → TLS 1.3 mới hơn, nhanh hơn, an toàn hơn → điểm cao hơn
 
 4. Configurable Thresholds:
@@ -493,7 +493,7 @@ Protocol: All | HTTP | HTTPS | WS | WSS
    Thêm 3 cột vào bảng run_summary:
    - ip_clean_score: điểm IP gradient (0.75 thay vì 0/1)
    - majority_tls_version: "TLS 1.3" hay "TLS 1.2"
-   - tls_version_score: điểm TLS (1.0 / 0.7 / 0.0)
+   - tls_version_score: điểm TLS (1.0 / 0.7 / 0.3 / 0.0)
 
 2. API — Truyền config:
    Start Test nhận thêm scoring_config (thresholds):
