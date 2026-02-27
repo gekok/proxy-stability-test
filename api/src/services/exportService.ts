@@ -141,10 +141,10 @@ export async function generateCSV(runId: string): Promise<string> {
 
   const rows = result.rows.map((r: Record<string, unknown>) => {
     const vals = [
-      r.seq, r.method, r.is_https, csvEscape(String(r.target_url || '')),
-      r.status_code ?? '', r.error_type ?? '',
+      r.seq, csvEscape(r.method), r.is_https, csvEscape(r.target_url),
+      r.status_code ?? '', csvEscape(r.error_type),
       r.tcp_connect_ms ?? '', r.tls_handshake_ms ?? '', r.ttfb_ms ?? '', r.total_ms ?? '',
-      r.bytes_sent ?? 0, r.bytes_received ?? 0, r.measured_at ?? '',
+      r.bytes_sent ?? 0, r.bytes_received ?? 0, csvEscape(r.measured_at),
     ];
     return vals.join(',');
   });
@@ -152,11 +152,12 @@ export async function generateCSV(runId: string): Promise<string> {
   return [headers, ...rows].join('\n');
 }
 
-function csvEscape(val: string): string {
-  if (val.includes(',') || val.includes('"') || val.includes('\n')) {
-    return `"${val.replace(/"/g, '""')}"`;
+function csvEscape(val: unknown): string {
+  const str = String(val ?? '');
+  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+    return `"${str.replace(/"/g, '""')}"`;
   }
-  return val;
+  return str;
 }
 
 export interface ProviderComparison {

@@ -200,7 +200,7 @@ func (t *HTTPSTester) doRequest(ctx context.Context, method, path string, body [
 	dialer := net.Dialer{Timeout: t.timeout}
 	conn, err := dialer.DialContext(ctx, "tcp", proxyAddr)
 	if err != nil {
-		sample.TCPConnectMS = float64(time.Since(reqStart).Milliseconds())
+		sample.TCPConnectMS = float64(time.Since(reqStart).Microseconds()) / 1000.0
 		sample.TotalMS = sample.TCPConnectMS
 		sample.ErrorType = classifyHTTPError(err)
 		sample.ErrorMessage = err.Error()
@@ -216,7 +216,7 @@ func (t *HTTPSTester) doRequest(ctx context.Context, method, path string, body [
 	}
 	defer conn.Close()
 
-	sample.TCPConnectMS = float64(time.Since(reqStart).Milliseconds())
+	sample.TCPConnectMS = float64(time.Since(reqStart).Microseconds()) / 1000.0
 
 	// Phase 1b: CONNECT tunnel
 	connectReq := fmt.Sprintf("CONNECT %s:%d HTTP/1.1\r\nHost: %s:%d\r\n",
@@ -230,7 +230,7 @@ func (t *HTTPSTester) doRequest(ctx context.Context, method, path string, body [
 	conn.SetDeadline(time.Now().Add(t.timeout))
 	_, err = conn.Write([]byte(connectReq))
 	if err != nil {
-		sample.TotalMS = float64(time.Since(reqStart).Milliseconds())
+		sample.TotalMS = float64(time.Since(reqStart).Microseconds()) / 1000.0
 		sample.ErrorType = "connect_tunnel_failed"
 		sample.ErrorMessage = err.Error()
 		t.logger.Debug("CONNECT tunnel fail",
@@ -244,7 +244,7 @@ func (t *HTTPSTester) doRequest(ctx context.Context, method, path string, body [
 	reader := bufio.NewReader(conn)
 	resp, err := http.ReadResponse(reader, nil)
 	if err != nil {
-		sample.TotalMS = float64(time.Since(reqStart).Milliseconds())
+		sample.TotalMS = float64(time.Since(reqStart).Microseconds()) / 1000.0
 		sample.ErrorType = "connect_tunnel_failed"
 		sample.ErrorMessage = err.Error()
 		return sample
@@ -252,7 +252,7 @@ func (t *HTTPSTester) doRequest(ctx context.Context, method, path string, body [
 	resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		sample.TotalMS = float64(time.Since(reqStart).Milliseconds())
+		sample.TotalMS = float64(time.Since(reqStart).Microseconds()) / 1000.0
 		sample.ErrorType = classifyConnectError(resp.StatusCode)
 		sample.ErrorMessage = fmt.Sprintf("CONNECT responded %d", resp.StatusCode)
 		t.logger.Debug("CONNECT tunnel fail",
@@ -277,10 +277,10 @@ func (t *HTTPSTester) doRequest(ctx context.Context, method, path string, body [
 	})
 
 	err = tlsConn.HandshakeContext(ctx)
-	sample.TLSHandshakeMS = float64(time.Since(tlsStart).Milliseconds())
+	sample.TLSHandshakeMS = float64(time.Since(tlsStart).Microseconds()) / 1000.0
 
 	if err != nil {
-		sample.TotalMS = float64(time.Since(reqStart).Milliseconds())
+		sample.TotalMS = float64(time.Since(reqStart).Microseconds()) / 1000.0
 		sample.ErrorType = classifyTLSError(err)
 		sample.ErrorMessage = err.Error()
 		t.logger.Debug("TLS handshake fail",
@@ -324,7 +324,7 @@ func (t *HTTPSTester) doRequest(ctx context.Context, method, path string, body [
 	tlsConn.SetDeadline(time.Now().Add(t.timeout))
 	_, err = tlsConn.Write([]byte(httpReq))
 	if err != nil {
-		sample.TotalMS = float64(time.Since(reqStart).Milliseconds())
+		sample.TotalMS = float64(time.Since(reqStart).Microseconds()) / 1000.0
 		sample.ErrorType = "unknown"
 		sample.ErrorMessage = err.Error()
 		return sample
@@ -338,8 +338,8 @@ func (t *HTTPSTester) doRequest(ctx context.Context, method, path string, body [
 	tlsReader := bufio.NewReader(tlsConn)
 	httpResp, err := http.ReadResponse(tlsReader, nil)
 	if err != nil {
-		sample.TotalMS = float64(time.Since(reqStart).Milliseconds())
-		sample.TTFBMS = float64(time.Since(ttfbStart).Milliseconds())
+		sample.TotalMS = float64(time.Since(reqStart).Microseconds()) / 1000.0
+		sample.TTFBMS = float64(time.Since(ttfbStart).Microseconds()) / 1000.0
 		sample.ErrorType = "unknown"
 		sample.ErrorMessage = err.Error()
 		t.logger.Debug("HTTPS request fail",
@@ -354,12 +354,12 @@ func (t *HTTPSTester) doRequest(ctx context.Context, method, path string, body [
 	}
 	defer httpResp.Body.Close()
 
-	sample.TTFBMS = float64(time.Since(ttfbStart).Milliseconds())
+	sample.TTFBMS = float64(time.Since(ttfbStart).Microseconds()) / 1000.0
 	sample.StatusCode = httpResp.StatusCode
 
 	respBody, _ := io.ReadAll(httpResp.Body)
 	sample.BytesReceived = int64(len(respBody))
-	sample.TotalMS = float64(time.Since(reqStart).Milliseconds())
+	sample.TotalMS = float64(time.Since(reqStart).Microseconds()) / 1000.0
 
 	t.logger.Debug("HTTPS total timing",
 		"phase", "continuous",

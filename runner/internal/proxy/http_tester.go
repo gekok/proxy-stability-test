@@ -225,7 +225,7 @@ func (t *HTTPTester) doRequest(ctx context.Context, method, targetURL string, bo
 	if err != nil {
 		sample.ErrorType = "unknown"
 		sample.ErrorMessage = err.Error()
-		sample.TotalMS = float64(time.Since(reqStart).Milliseconds())
+		sample.TotalMS = float64(time.Since(reqStart).Microseconds()) / 1000.0
 		return sample
 	}
 
@@ -237,13 +237,13 @@ func (t *HTTPTester) doRequest(ctx context.Context, method, targetURL string, bo
 	}
 
 	resp, err := t.client.Do(req)
-	sample.TotalMS = float64(time.Since(reqStart).Milliseconds())
+	sample.TotalMS = float64(time.Since(reqStart).Microseconds()) / 1000.0
 
 	if !connectStart.IsZero() && !connectDone.IsZero() {
-		sample.TCPConnectMS = float64(connectDone.Sub(connectStart).Milliseconds())
+		sample.TCPConnectMS = float64(connectDone.Sub(connectStart).Microseconds()) / 1000.0
 	}
 	if !gotFirstByte.IsZero() {
-		sample.TTFBMS = float64(gotFirstByte.Sub(reqStart).Milliseconds())
+		sample.TTFBMS = float64(gotFirstByte.Sub(reqStart).Microseconds()) / 1000.0
 	}
 
 	if err != nil {

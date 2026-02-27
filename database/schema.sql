@@ -184,6 +184,9 @@ CREATE TABLE IF NOT EXISTS run_summary (
     score_ws            DOUBLE PRECISION,
     score_security      DOUBLE PRECISION,
     score_total         DOUBLE PRECISION,
+    ip_clean_score          DOUBLE PRECISION,
+    majority_tls_version    VARCHAR(20),
+    tls_version_score       DOUBLE PRECISION,
     computed_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

@@ -53,7 +53,7 @@ export function ProxyForm({ isOpen, onClose, onSubmit, proxy, providers, default
     if (!host.trim()) newErrors.host = 'Host is required';
     const portNum = parseInt(port, 10);
     if (!port || isNaN(portNum) || portNum < 1 || portNum > 65535) newErrors.port = 'Port must be 1-65535';
-    if (!['http', 'socks5'].includes(protocol)) newErrors.protocol = 'Invalid protocol';
+    if (!['http', 'https', 'socks5'].includes(protocol)) newErrors.protocol = 'Invalid protocol';
 
     if (Object.keys(newErrors).length > 0) {
       if (process.env.NODE_ENV === 'development') {
@@ -79,7 +79,7 @@ export function ProxyForm({ isOpen, onClose, onSubmit, proxy, providers, default
           label: label.trim(),
           host: host.trim(),
           port: parseInt(port, 10),
-          protocol: protocol as 'http' | 'socks5',
+          protocol: protocol as 'http' | 'https' | 'socks5',
           auth_user: authUser.trim() || undefined,
           expected_country: expectedCountry.trim() || undefined,
           is_dedicated: isDedicated,
@@ -92,7 +92,7 @@ export function ProxyForm({ isOpen, onClose, onSubmit, proxy, providers, default
           label: label.trim(),
           host: host.trim(),
           port: parseInt(port, 10),
-          protocol: protocol as 'http' | 'socks5',
+          protocol: protocol as 'http' | 'https' | 'socks5',
           auth_user: authUser.trim() || undefined,
           auth_pass: authPass || undefined,
           expected_country: expectedCountry.trim() || undefined,
@@ -137,6 +137,7 @@ export function ProxyForm({ isOpen, onClose, onSubmit, proxy, providers, default
             onChange={(e) => setProtocol(e.target.value)}
             options={[
               { value: 'http', label: 'HTTP' },
+              { value: 'https', label: 'HTTPS' },
               { value: 'socks5', label: 'SOCKS5' },
             ]}
             error={errors.protocol}

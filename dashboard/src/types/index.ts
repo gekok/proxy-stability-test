@@ -28,7 +28,7 @@ export interface Proxy {
   label: string;
   host: string;
   port: number;
-  protocol: 'http' | 'socks5';
+  protocol: 'http' | 'https' | 'socks5';
   auth_user: string | null;
   has_password?: boolean;
   expected_country: string | null;
@@ -44,7 +44,7 @@ export interface ProxyCreate {
   label: string;
   host: string;
   port: number;
-  protocol: 'http' | 'socks5';
+  protocol: 'http' | 'https' | 'socks5';
   auth_user?: string;
   auth_pass?: string;
   expected_country?: string;
@@ -55,7 +55,7 @@ export interface ProxyUpdate {
   label?: string;
   host?: string;
   port?: number;
-  protocol?: 'http' | 'socks5';
+  protocol?: 'http' | 'https' | 'socks5';
   auth_user?: string;
   auth_pass?: string;
   expected_country?: string;

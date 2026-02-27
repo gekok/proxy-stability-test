@@ -42,15 +42,6 @@ export async function triggerRunner(runIds: string[], scoringConfig?: Record<str
       }
     }
 
-    // Update status to running
-    await pool.query(
-      `UPDATE test_run SET status = 'running', started_at = now() WHERE id = $1`,
-      [runId],
-    );
-
-    const oldStatus = run.status;
-    logger.info({ module: 'services.runService', run_id: runId, old_status: oldStatus, new_status: 'running' }, 'Run status changed');
-
     runs.push({
       run_id: runId,
       proxy: {
@@ -98,6 +89,17 @@ export async function triggerRunner(runIds: string[], scoringConfig?: Record<str
       body: JSON.stringify({ runs }),
     });
 
+    if (response.ok) {
+      // Update status to running only after successful Runner response
+      for (const run of runs) {
+        await pool.query(
+          `UPDATE test_run SET status = 'running', started_at = now() WHERE id = $1`,
+          [run.run_id],
+        );
+        logger.info({ module: 'services.runService', run_id: run.run_id, old_status: 'pending', new_status: 'running' }, 'Run status changed');
+      }
+    }
+
     if (!response.ok) {
       const body = await response.text();
       logger.error({
@@ -107,7 +109,7 @@ export async function triggerRunner(runIds: string[], scoringConfig?: Record<str
         run_ids: runs.map((r) => r.run_id),
       }, 'Runner trigger fail');
 
-      // Revert status to failed
+      // Set status to failed since Runner did not accept
       for (const run of runs) {
         await pool.query(
           `UPDATE test_run SET status = 'failed', error_message = $2, finished_at = now() WHERE id = $1`,
@@ -127,7 +129,7 @@ export async function triggerRunner(runIds: string[], scoringConfig?: Record<str
       run_ids: runs.map((r) => r.run_id),
     }, 'Runner trigger fail');
 
-    // Revert status to failed
+    // Set status to failed since Runner is unreachable
     for (const run of runs) {
       await pool.query(
         `UPDATE test_run SET status = 'failed', error_message = $2, finished_at = now() WHERE id = $1`,

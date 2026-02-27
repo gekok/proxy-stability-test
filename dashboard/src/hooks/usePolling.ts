@@ -6,6 +6,7 @@ interface UsePollingOptions {
   interval: number;
   enabled: boolean;
   source?: string;
+  fetchOnMount?: boolean;
 }
 
 export function usePolling(
@@ -37,18 +38,21 @@ export function usePolling(
   useEffect(() => {
     isMountedRef.current = true;
 
-    if (enabled) {
+    if (enabled || options.fetchOnMount) {
       if (process.env.NODE_ENV === 'development') {
-        console.debug('[poll] started', { interval, source });
+        console.debug('[poll] started', { interval, source, fetchOnMount: options.fetchOnMount });
       }
 
-      if (!previousEnabledRef.current) {
+      if (!previousEnabledRef.current && enabled) {
         if (process.env.NODE_ENV === 'development') {
           console.debug('[poll] resumed', { interval, source });
         }
       }
 
       executePoll();
+    }
+
+    if (enabled) {
       intervalRef.current = setInterval(executePoll, interval);
     } else {
       if (previousEnabledRef.current && process.env.NODE_ENV === 'development') {
@@ -73,5 +77,5 @@ export function usePolling(
         console.debug('[poll] cleanup', { reason: 'unmount', source });
       }
     };
-  }, [enabled, interval, executePoll, source]);
+  }, [enabled, interval, executePoll, source, options.fetchOnMount]);
 }

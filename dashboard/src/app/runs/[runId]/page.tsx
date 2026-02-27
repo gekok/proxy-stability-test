@@ -37,19 +37,27 @@ type TabId = typeof TABS[number]['id'];
 
 export default function RunDetailPage() {
   const { runId } = useParams<{ runId: string }>();
-  const { run, summary, samples, wsSamples, ipChecks, loading, error, fetchRunDetail, stopRun, isActive } = useRunDetail(runId);
+  const [activeTab, setActiveTab] = useState<TabId>('http');
+  const { run, summary, samples, wsSamples, ipChecks, loading, error, fetchRunDetail, stopRun, isActive } = useRunDetail(runId, activeTab);
   const { entries: errorEntries, allEntries: allErrors, loading: errorsLoading, filters: errorFilters, updateFilter: updateErrorFilter, errorTypes, fetchErrorLogs } = useErrorLogs(runId);
   const { latencyData, uptimeData, loading: chartsLoading } = useChartData(runId, isActive);
   const scoreHistory = useSummaryHistory(summary);
   const pollingStartedRef = useRef(false);
-  const [activeTab, setActiveTab] = useState<TabId>('http');
 
-  useEffect(() => { fetchRunDetail(); fetchErrorLogs(); }, [fetchRunDetail, fetchErrorLogs]);
+  // Fetch error logs on mount + when Errors tab is activated
+  useEffect(() => { fetchErrorLogs(); }, [fetchErrorLogs]);
+
+  useEffect(() => {
+    if (activeTab === 'errors') {
+      fetchErrorLogs();
+    }
+  }, [activeTab, fetchErrorLogs]);
 
   usePolling(fetchRunDetail, {
     interval: 3000,
     enabled: isActive,
     source: 'RunDetailPage',
+    fetchOnMount: true,
   });
 
   useEffect(() => {

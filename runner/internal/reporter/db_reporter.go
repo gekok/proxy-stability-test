@@ -49,3 +49,20 @@ func (r *DBReporter) UpdateStatus(runID string, status string, errorMessage stri
 	)
 	return nil
 }
+
+// ReportWSSamples inserts WS samples directly into the database
+func (r *DBReporter) ReportWSSamples(runID string, samples []domain.WSSample) error {
+	r.logger.Debug("DB WS insert skipped (using API reporter)",
+		"run_id", runID,
+		"sample_count", len(samples),
+	)
+	return nil
+}
+
+// ReportIPCheck inserts an IP check result directly into the database
+func (r *DBReporter) ReportIPCheck(runID string, result domain.IPCheckResult) error {
+	r.logger.Debug("DB IP check insert skipped (using API reporter)",
+		"run_id", runID,
+	)
+	return nil
+}

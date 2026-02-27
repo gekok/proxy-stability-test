@@ -161,6 +161,20 @@ runsRouter.patch('/:id/status', async (req: Request, res: Response, next: NextFu
 
     const oldStatus = runResult.rows[0].status;
 
+    const VALID_TRANSITIONS: Record<string, string[]> = {
+      pending:   ['running', 'cancelled'],
+      running:   ['stopping', 'completed', 'failed'],
+      stopping:  ['completed', 'failed', 'cancelled'],
+      completed: [],
+      failed:    [],
+      cancelled: [],
+    };
+
+    const allowed = VALID_TRANSITIONS[oldStatus] || [];
+    if (!allowed.includes(status)) {
+      return res.status(400).json({ error: { message: `Invalid status transition: ${oldStatus} → ${status}` } });
+    }
+
     const fields: string[] = ['status = $1'];
     const values: any[] = [status];
     let idx = 2;
@@ -225,11 +239,11 @@ runsRouter.post('/:id/http-samples/batch', async (req: Request, res: Response, n
     for (const s of samples) {
       placeholders.push(`($${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++})`);
       values.push(
-        runId, s.seq, s.is_warmup || false, s.target_url, s.method || 'GET',
-        s.is_https || false, s.status_code || null, s.error_type || null, s.error_message || null,
-        s.tcp_connect_ms || null, s.tls_handshake_ms || null, s.ttfb_ms || null, s.total_ms || null,
-        s.tls_version || null, s.tls_cipher || null,
-        s.bytes_sent || 0, s.bytes_received || 0,
+        runId, s.seq, s.is_warmup ?? false, s.target_url, s.method ?? 'GET',
+        s.is_https ?? false, s.status_code ?? null, s.error_type ?? null, s.error_message ?? null,
+        s.tcp_connect_ms ?? null, s.tls_handshake_ms ?? null, s.ttfb_ms ?? null, s.total_ms ?? null,
+        s.tls_version ?? null, s.tls_cipher ?? null,
+        s.bytes_sent ?? 0, s.bytes_received ?? 0,
       );
     }
 
@@ -267,18 +281,19 @@ runsRouter.post('/:id/ws-samples/batch', async (req: Request, res: Response, nex
     let idx = 1;
 
     for (const s of samples) {
-      placeholders.push(`($${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++})`);
+      placeholders.push(`($${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++})`);
       values.push(
-        runId, s.seq || 0, s.is_warmup || false, s.target_url || '',
-        s.connected || false, s.error_type || null, s.error_message || null,
-        s.tcp_connect_ms || null, s.tls_handshake_ms || null, s.handshake_ms || null,
-        s.message_rtt_ms || null, s.connection_held_ms || null, s.disconnect_reason || null,
-        s.messages_sent || 0, s.messages_received || 0, s.drop_count || 0,
+        runId, s.seq ?? 0, s.is_warmup ?? false, s.target_url ?? '',
+        s.connected ?? false, s.error_type ?? null, s.error_message ?? null,
+        s.tcp_connect_ms ?? null, s.tls_handshake_ms ?? null, s.handshake_ms ?? null,
+        s.message_rtt_ms ?? null, s.connection_held_ms ?? null, s.disconnect_reason ?? null,
+        s.messages_sent ?? 0, s.messages_received ?? 0, s.drop_count ?? 0,
+        s.measured_at ?? new Date().toISOString(),
       );
     }
 
     await pool.query(
-      `INSERT INTO ws_sample (run_id, seq, is_warmup, target_url, connected, error_type, error_message, tcp_connect_ms, tls_handshake_ms, handshake_ms, message_rtt_ms, connection_held_ms, disconnect_reason, messages_sent, messages_received, drop_count)
+      `INSERT INTO ws_sample (run_id, seq, is_warmup, target_url, connected, error_type, error_message, tcp_connect_ms, tls_handshake_ms, handshake_ms, message_rtt_ms, connection_held_ms, disconnect_reason, messages_sent, messages_received, drop_count, measured_at)
        VALUES ${placeholders.join(', ')}`,
       values,
     );

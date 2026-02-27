@@ -63,7 +63,7 @@ export function RunScoreBreakdown({ summary }: RunScoreBreakdownProps) {
   }
 
   const hasWS = summary.ws_sample_count > 0;
-  const hasSecurity = summary.score_security != null && summary.score_security > 0;
+  const hasSecurity = summary.score_security != null;
 
   // Determine effective weights
   let wU = 25, wL = 25, wJ = 15, wW = 15, wS = 20;

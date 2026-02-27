@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import { apiClient } from '@/lib/api-client';
 import { ErrorLogEntry, ErrorLogFilterState, HttpSample, WsSample, IPCheckResult } from '@/types';
 
@@ -13,33 +13,35 @@ export function useErrorLogs(runId: string) {
     error_type: '',
     protocol: '',
   });
+  const hasFetchedRef = useRef(false);
 
   const fetchErrorLogs = useCallback(async () => {
+    if (!runId) return;
     setLoading(true);
     setError(null);
     const allEntries: ErrorLogEntry[] = [];
 
     // Fetch HTTP errors
     try {
-      const httpRes = await apiClient.get<HttpSample[]>(`/runs/${runId}/http-samples`, { limit: '200' });
-      const httpSamples = httpRes.data || [];
-      const httpErrors = (Array.isArray(httpSamples) ? httpSamples : []).filter(
-        (s: HttpSample) => s.error_type || (s.status_code && s.status_code >= 400)
+      const httpRes = await apiClient.get<HttpSample[]>(`/runs/${runId}/http-samples`, { limit: '5000' });
+      const httpSamples = Array.isArray(httpRes.data) ? httpRes.data : [];
+      const httpErrors = httpSamples.filter(
+        (s: HttpSample) => s.error_type || (s.status_code != null && s.status_code >= 400)
       );
       for (const s of httpErrors) {
         allEntries.push({
           id: s.id,
           source: 'http',
-          error_type: s.error_type || `http_${s.status_code}`,
-          error_message: s.error_message || undefined,
+          error_type: s.error_type ?? `http_${s.status_code}`,
+          error_message: s.error_message ?? undefined,
           protocol: s.is_https ? 'https' : 'http',
           method: s.method,
-          status_code: s.status_code || undefined,
+          status_code: s.status_code ?? undefined,
           timing: {
-            tcp_connect_ms: s.tcp_connect_ms || undefined,
-            tls_handshake_ms: s.tls_handshake_ms || undefined,
-            ttfb_ms: s.ttfb_ms || undefined,
-            total_ms: s.total_ms || undefined,
+            tcp_connect_ms: s.tcp_connect_ms ?? undefined,
+            tls_handshake_ms: s.tls_handshake_ms ?? undefined,
+            ttfb_ms: s.ttfb_ms ?? undefined,
+            total_ms: s.total_ms ?? undefined,
           },
           seq: s.seq,
           measured_at: s.measured_at,
@@ -47,29 +49,29 @@ export function useErrorLogs(runId: string) {
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error('[pages.errors] Error logs fetch failed', { source: 'http', error_detail: msg });
+      console.warn('[errors] HTTP error logs fetch failed:', msg);
     }
 
     // Fetch WS errors
     try {
-      const wsRes = await apiClient.get<WsSample[]>(`/runs/${runId}/ws-samples`, { limit: '200' });
-      const wsSamples = wsRes.data || [];
-      const wsErrors = (Array.isArray(wsSamples) ? wsSamples : []).filter(
+      const wsRes = await apiClient.get<WsSample[]>(`/runs/${runId}/ws-samples`, { limit: '5000' });
+      const wsSamples = Array.isArray(wsRes.data) ? wsRes.data : [];
+      const wsErrors = wsSamples.filter(
         (s: WsSample) => s.error_type || !s.connected
       );
       for (const s of wsErrors) {
         allEntries.push({
           id: s.id,
           source: 'ws',
-          error_type: s.error_type || 'connection_failed',
-          error_message: s.error_message || undefined,
+          error_type: s.error_type ?? 'connection_failed',
+          error_message: s.error_message ?? undefined,
           protocol: s.target_url?.startsWith('wss') ? 'wss' : 'ws',
           target_url: s.target_url,
           timing: {
-            tcp_connect_ms: s.tcp_connect_ms || undefined,
-            tls_handshake_ms: s.tls_handshake_ms || undefined,
-            handshake_ms: s.handshake_ms || undefined,
-            message_rtt_ms: s.message_rtt_ms || undefined,
+            tcp_connect_ms: s.tcp_connect_ms ?? undefined,
+            tls_handshake_ms: s.tls_handshake_ms ?? undefined,
+            handshake_ms: s.handshake_ms ?? undefined,
+            message_rtt_ms: s.message_rtt_ms ?? undefined,
           },
           seq: s.seq,
           measured_at: s.measured_at,
@@ -77,14 +79,14 @@ export function useErrorLogs(runId: string) {
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error('[pages.errors] Error logs fetch failed', { source: 'ws', error_detail: msg });
+      console.warn('[errors] WS error logs fetch failed:', msg);
     }
 
     // Fetch IP issues
     try {
       const ipRes = await apiClient.get<IPCheckResult[]>(`/runs/${runId}/ip-checks`);
-      const ipChecks = ipRes.data || [];
-      const ipIssues = (Array.isArray(ipChecks) ? ipChecks : []).filter(
+      const ipChecks = Array.isArray(ipRes.data) ? ipRes.data : [];
+      const ipIssues = ipChecks.filter(
         (s: IPCheckResult) => !s.is_clean || !s.geo_match
       );
       for (const s of ipIssues) {
@@ -100,21 +102,20 @@ export function useErrorLogs(runId: string) {
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error('[pages.errors] Error logs fetch failed', { source: 'ip', error_detail: msg });
+      console.warn('[errors] IP error logs fetch failed:', msg);
     }
 
     // Sort by measured_at descending
     allEntries.sort((a, b) => new Date(b.measured_at).getTime() - new Date(a.measured_at).getTime());
 
-    if (process.env.NODE_ENV === 'development') {
-      const httpCount = allEntries.filter(e => e.source === 'http').length;
-      const wsCount = allEntries.filter(e => e.source === 'ws').length;
-      const ipCount = allEntries.filter(e => e.source === 'ip').length;
-      console.debug('[pages.errors] Error logs loaded', {
-        run_id: runId, http_errors: httpCount, ws_errors: wsCount, ip_issues: ipCount,
-      });
-    }
+    console.log('[errors] Error logs loaded:', {
+      run_id: runId, total: allEntries.length,
+      http: allEntries.filter(e => e.source === 'http').length,
+      ws: allEntries.filter(e => e.source === 'ws').length,
+      ip: allEntries.filter(e => e.source === 'ip').length,
+    });
 
+    hasFetchedRef.current = true;
     setEntries(allEntries);
     setLoading(false);
   }, [runId]);

@@ -1,5 +1,6 @@
 'use client';
 
+import { useRef, useCallback } from 'react';
 import { ErrorLogFilterState } from '@/types';
 import { Select } from '@/components/ui/Select';
 
@@ -10,12 +11,23 @@ interface ErrorLogFiltersProps {
 }
 
 export function ErrorLogFilters({ filters, errorTypes, onChange }: ErrorLogFiltersProps) {
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  const debouncedChange = useCallback((key: keyof ErrorLogFilterState, value: string) => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+    debounceRef.current = setTimeout(() => {
+      onChange(key, value);
+    }, 300);
+  }, [onChange]);
+
   return (
     <div className="flex flex-wrap gap-3 mb-4">
       <Select
         label="Source"
         value={filters.source}
-        onChange={(e) => onChange('source', e.target.value)}
+        onChange={(e) => debouncedChange('source', e.target.value)}
         options={[
           { value: 'all', label: 'All Sources' },
           { value: 'http', label: 'HTTP' },
@@ -26,7 +38,7 @@ export function ErrorLogFilters({ filters, errorTypes, onChange }: ErrorLogFilte
       <Select
         label="Error Type"
         value={filters.error_type}
-        onChange={(e) => onChange('error_type', e.target.value)}
+        onChange={(e) => debouncedChange('error_type', e.target.value)}
         options={[
           { value: '', label: 'All Types' },
           ...errorTypes.map(t => ({ value: t, label: t })),
@@ -35,7 +47,7 @@ export function ErrorLogFilters({ filters, errorTypes, onChange }: ErrorLogFilte
       <Select
         label="Protocol"
         value={filters.protocol}
-        onChange={(e) => onChange('protocol', e.target.value)}
+        onChange={(e) => debouncedChange('protocol', e.target.value)}
         options={[
           { value: '', label: 'All Protocols' },
           { value: 'http', label: 'HTTP' },

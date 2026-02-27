@@ -67,7 +67,12 @@ func (s *Scheduler) RunAll(ctx context.Context, runs []domain.RunConfig, apiURL,
 
 	for _, run := range runs {
 		wg.Add(1)
-		sem <- struct{}{}
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			wg.Done()
+			continue
+		}
 
 		go func(r domain.RunConfig) {
 			defer wg.Done()

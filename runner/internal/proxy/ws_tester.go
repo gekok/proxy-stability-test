@@ -171,17 +171,17 @@ func (t *WSTester) doConnection(ctx context.Context, targetURL string, isWSS boo
 	dialDuration := time.Since(dialStart)
 
 	// Estimate TCP + handshake from total dial time
-	sample.TCPConnectMS = float64(dialDuration.Milliseconds()) / 2
-	sample.HandshakeMS = float64(dialDuration.Milliseconds())
+	sample.TCPConnectMS = float64(dialDuration.Microseconds()) / 1000.0 / 2
+	sample.HandshakeMS = float64(dialDuration.Microseconds()) / 1000.0
 	if isWSS {
-		sample.TLSHandshakeMS = float64(dialDuration.Milliseconds()) / 3
+		sample.TLSHandshakeMS = float64(dialDuration.Microseconds()) / 1000.0 / 3
 	}
 
 	if err != nil {
 		sample.Connected = false
 		sample.ErrorType = classifyWSError(err)
 		sample.ErrorMessage = err.Error()
-		sample.ConnectionHeldMS = float64(time.Since(connStart).Milliseconds())
+		sample.ConnectionHeldMS = float64(time.Since(connStart).Microseconds()) / 1000.0
 
 		if resp != nil && resp.StatusCode != 101 {
 			sample.DisconnectReason = fmt.Sprintf("HTTP %d", resp.StatusCode)
@@ -237,11 +237,16 @@ func (t *WSTester) doConnection(ctx context.Context, targetURL string, isWSS boo
 
 	// Read loop in separate goroutine
 	readCh := make(chan readResult, maxMessages)
+	doneCh := make(chan struct{})
 	go func() {
 		for {
 			conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 			_, msg, err := conn.ReadMessage()
-			readCh <- readResult{msg: msg, err: err}
+			select {
+			case readCh <- readResult{msg: msg, err: err}:
+			case <-doneCh:
+				return
+			}
 			if err != nil {
 				return
 			}
@@ -302,7 +307,7 @@ func (t *WSTester) doConnection(ctx context.Context, targetURL string, isWSS boo
 						goto done
 					}
 				} else {
-					rtt := float64(time.Since(sendStart).Milliseconds())
+					rtt := float64(time.Since(sendStart).Microseconds()) / 1000.0
 					totalRTT += rtt
 					sample.MessagesReceived++
 					_ = result.msg // echo data
@@ -318,7 +323,8 @@ func (t *WSTester) doConnection(ctx context.Context, targetURL string, isWSS boo
 	sample.DisconnectReason = "messages_complete"
 
 done:
-	sample.ConnectionHeldMS = float64(time.Since(connStart).Milliseconds())
+	close(doneCh)
+	sample.ConnectionHeldMS = float64(time.Since(connStart).Microseconds()) / 1000.0
 
 	if sample.MessagesReceived > 0 {
 		sample.MessageRTTMS = totalRTT / float64(sample.MessagesReceived)

@@ -33,6 +33,7 @@ type Orchestrator struct {
 	logger       *slog.Logger
 	allSamples   []domain.HTTPSample  // accumulated for summary
 	allWSSamples []domain.WSSample    // accumulated for WS summary
+	sampleMu     sync.RWMutex         // protects allSamples and allWSSamples
 	ipResult     *domain.IPCheckResult // IP check result
 	ipMu         sync.Mutex           // protects ipResult during re-checks
 }
@@ -173,48 +174,48 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		"phase", "continuous",
 	)
 
-	g, gCtx := errgroup.WithContext(ctx)
+	g := new(errgroup.Group)
 
 	// Goroutine 1: HTTP tester
 	g.Go(func() error {
-		return o.httpTester.Run(gCtx)
+		return o.httpTester.Run(ctx)
 	})
 
 	// Goroutine 2: HTTPS tester
 	g.Go(func() error {
-		return o.httpsTester.Run(gCtx)
+		return o.httpsTester.Run(ctx)
 	})
 
 	// Goroutine 3: WS tester
 	g.Go(func() error {
-		return o.wsTester.Run(gCtx)
+		return o.wsTester.Run(ctx)
 	})
 
 	// Goroutine 5b: Collect WS samples from channel → batch report
 	g.Go(func() error {
-		return o.collectAndReportWS(gCtx, wsSampleChan)
+		return o.collectAndReportWS(ctx, wsSampleChan)
 	})
 
 	// Goroutine 4: Rolling summary
 	g.Go(func() error {
-		return o.rollingSummary(gCtx)
+		return o.rollingSummary(ctx)
 	})
 
 	// Goroutine 6: Burst test (every 5 minutes)
 	g.Go(func() error {
-		return o.runBurstLoop(gCtx, sampleChan)
+		return o.runBurstLoop(ctx, sampleChan)
 	})
 
 	// Goroutine 8: IP re-check (Sprint 4)
 	if o.ipResult != nil && o.config.ScoringCfg.IPCheckIntervalSec > 0 {
 		g.Go(func() error {
-			return o.ipReCheckLoop(gCtx)
+			return o.ipReCheckLoop(ctx)
 		})
 	}
 
 	// Goroutine 7: Collect samples from channel → batch report
 	g.Go(func() error {
-		return o.collectAndReport(gCtx, sampleChan)
+		return o.collectAndReport(ctx, sampleChan)
 	})
 
 	o.logger.Info("All goroutines running",
@@ -234,8 +235,15 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		"phase", "final_summary",
 	)
 
-	summary := o.collector.ComputeSummary(o.allSamples)
-	o.collector.ComputeWSSummary(&summary, o.allWSSamples)
+	o.sampleMu.RLock()
+	finalSamples := make([]domain.HTTPSample, len(o.allSamples))
+	copy(finalSamples, o.allSamples)
+	finalWSSamples := make([]domain.WSSample, len(o.allWSSamples))
+	copy(finalWSSamples, o.allWSSamples)
+	o.sampleMu.RUnlock()
+
+	summary := o.collector.ComputeSummary(finalSamples)
+	o.collector.ComputeWSSummary(&summary, finalWSSamples)
 	o.ipMu.Lock()
 	if o.ipResult != nil {
 		summary.IPClean = &o.ipResult.IsClean
@@ -283,8 +291,15 @@ func (o *Orchestrator) rollingSummary(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			summary := o.collector.ComputeSummary(o.allSamples)
-			o.collector.ComputeWSSummary(&summary, o.allWSSamples)
+			o.sampleMu.RLock()
+			samplesCopy := make([]domain.HTTPSample, len(o.allSamples))
+			copy(samplesCopy, o.allSamples)
+			wsSamplesCopy := make([]domain.WSSample, len(o.allWSSamples))
+			copy(wsSamplesCopy, o.allWSSamples)
+			o.sampleMu.RUnlock()
+
+			summary := o.collector.ComputeSummary(samplesCopy)
+			o.collector.ComputeWSSummary(&summary, wsSamplesCopy)
 			o.ipMu.Lock()
 			if o.ipResult != nil {
 				summary.IPClean = &o.ipResult.IsClean
@@ -523,23 +538,51 @@ func (o *Orchestrator) runBurst(ctx context.Context, count int, sampleChan chan<
 			req, err := http.NewRequestWithContext(ctx, "GET", targetURL, nil)
 			if err != nil {
 				atomic.AddInt64(&failCount, 1)
+				sample := domain.HTTPSample{
+					Seq:          idx,
+					Method:       "GET",
+					TargetURL:    targetURL,
+					ErrorType:    "request_build_error",
+					ErrorMessage: err.Error(),
+					TotalMS:      float64(time.Since(reqStart).Microseconds()) / 1000.0,
+					MeasuredAt:   time.Now(),
+				}
+				select {
+				case sampleChan <- sample:
+				default:
+				}
 				return
 			}
 
 			resp, err := client.Do(req)
-			elapsed := time.Since(reqStart).Milliseconds()
-			atomic.AddInt64(&totalMS, elapsed)
+			elapsedMS := float64(time.Since(reqStart).Microseconds()) / 1000.0
+			atomic.AddInt64(&totalMS, time.Since(reqStart).Milliseconds())
+
+			sample := domain.HTTPSample{
+				Seq:        idx,
+				Method:     "GET",
+				TargetURL:  targetURL,
+				TotalMS:    elapsedMS,
+				MeasuredAt: time.Now(),
+			}
 
 			if err != nil {
 				atomic.AddInt64(&failCount, 1)
-				return
-			}
-			resp.Body.Close()
-
-			if resp.StatusCode < 400 {
-				atomic.AddInt64(&successCount, 1)
+				sample.ErrorType = "burst_error"
+				sample.ErrorMessage = err.Error()
 			} else {
-				atomic.AddInt64(&failCount, 1)
+				resp.Body.Close()
+				sample.StatusCode = resp.StatusCode
+				if resp.StatusCode < 400 {
+					atomic.AddInt64(&successCount, 1)
+				} else {
+					atomic.AddInt64(&failCount, 1)
+				}
+			}
+
+			select {
+			case sampleChan <- sample:
+			default:
 			}
 		}(i)
 	}
@@ -577,7 +620,9 @@ func (o *Orchestrator) collectAndReportWS(ctx context.Context, wsSampleChan <-ch
 			return
 		}
 
+		o.sampleMu.Lock()
 		o.allWSSamples = append(o.allWSSamples, batch...)
+		o.sampleMu.Unlock()
 
 		o.logger.Debug("WS batch assembled",
 			"phase", "continuous",
@@ -623,7 +668,9 @@ func (o *Orchestrator) collectAndReport(ctx context.Context, sampleChan <-chan d
 			return
 		}
 
+		o.sampleMu.Lock()
 		o.allSamples = append(o.allSamples, batch...)
+		o.sampleMu.Unlock()
 
 		httpCount, httpsCount := 0, 0
 		for _, s := range batch {
