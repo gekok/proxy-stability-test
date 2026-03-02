@@ -1,6 +1,6 @@
 # Project Status — Proxy Stability Test System
 
-Last updated: 2026-02-27
+Last updated: 2026-03-02
 
 ---
 
@@ -348,14 +348,26 @@ Docker:          5 containers       → all healthy
 
 ---
 
-## Known Limitations (Post Sprint 4)
+## Post-Sprint Enhancements (2026-03-02)
+
+### Quick Add Proxy (v6.2)
+
+| Change | Detail |
+|--------|--------|
+| **NEW** `QuickAddProxyDialog.tsx` | Paste `host:port:user:pass` (multi-line batch), auto-parse, duplicate detection (DB + input), auto-label from subdomain |
+| **Modified** `providers/page.tsx` | "Quick Add Proxy" button next to "Add Provider" |
+
+**Dashboard: 72 src files (was 71). Total: ~136 source files.**
+
+---
+
+## Known Limitations
 
 1. **External proxies**: Require ngrok or public IP to expose Target service
-2. **No batch import**: Providers/proxies entered via UI only (no YAML/CSV import)
-3. **No alerting**: No email/Slack notifications when test completes or proxy fails
-4. **No authentication**: Dashboard has no login/auth
-5. **No PDF export**: Only JSON/CSV supported
-6. **No historical trending**: Compare page uses latest run only, no time-series comparison
+2. **No alerting**: No email/Slack notifications when test completes or proxy fails
+3. **No authentication**: Dashboard has no login/auth
+4. **No PDF export**: Only JSON/CSV supported
+5. **No historical trending**: Compare page uses latest run only, no time-series comparison
 
 ---
 

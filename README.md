@@ -85,6 +85,8 @@ Open the Dashboard, go to **Providers**, and add a proxy provider (e.g., "Bright
 ### Step 2 — Add Proxies
 For each provider, add proxy endpoints with host, port, username, password, and expected country. Passwords are encrypted with AES-256-GCM before storage.
 
+**Quick Add**: Use the **Quick Add Proxy** button to paste proxy strings in `host:port:user:pass` format — one per line. Supports batch import with automatic duplicate detection.
+
 ### Step 3 — Start Test
 Select proxies to test (1 to 10), optionally adjust RPM (default 1000), timeout, and warmup settings, then click **Start Test**.
 
@@ -248,7 +250,7 @@ proxy-stability-test/
 │   ├── package.json / tsconfig.json
 │   └── Dockerfile
 │
-└── dashboard/                          # Next.js 14 + Tailwind CSS - 71 src files
+└── dashboard/                          # Next.js 14 + Tailwind CSS - 72 src files
     ├── src/
     │   ├── app/                        # Pages: overview, providers, runs, run detail, compare
     │   │   ├── page.tsx                # Overview (stat cards, active runs, recent results)
@@ -266,7 +268,7 @@ proxy-stability-test/
     │   │   ├── ui/                     # 11 reusable components (Button, Badge, Modal, Table, etc.)
     │   │   ├── layout/                 # Sidebar (4 nav items)
     │   │   ├── providers/              # ProviderList, ProviderForm, DeleteProviderDialog
-    │   │   ├── proxies/                # ProxyList, ProxyForm, ProxyCard, DeleteProxyDialog
+    │   │   ├── proxies/                # ProxyList, ProxyForm, ProxyCard, DeleteProxyDialog, QuickAddProxyDialog
     │   │   ├── test/                   # ProxySelector, TestConfigForm (+ scoring thresholds), StartTestDialog
     │   │   ├── runs/                   # 14 files: RunHeader, RunSummaryCards, RunMetricsDetail, RunHttpSamples,
     │   │   │                           #   RunWSSamples, RunIPCheck, RunScoreBreakdown, ExportButton,
@@ -279,7 +281,7 @@ proxy-stability-test/
     └── Dockerfile                      # Multi-stage: deps → builder → runner (standalone)
 ```
 
-**Total: ~135 source files** across all services (Sprint 1 + Sprint 2 + Sprint 3 + Sprint 4).
+**Total: ~136 source files** across all services.
 
 ## Development Roadmap
 

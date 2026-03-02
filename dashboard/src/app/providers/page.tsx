@@ -8,6 +8,7 @@ import { ProviderForm } from '@/components/providers/ProviderForm';
 import { DeleteProviderDialog } from '@/components/providers/DeleteProviderDialog';
 import { ProxyForm } from '@/components/proxies/ProxyForm';
 import { DeleteProxyDialog } from '@/components/proxies/DeleteProxyDialog';
+import { QuickAddProxyDialog } from '@/components/proxies/QuickAddProxyDialog';
 import { Button } from '@/components/ui/Button';
 import { ErrorAlert } from '@/components/ui/ErrorAlert';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
@@ -25,6 +26,7 @@ export default function ProvidersPage() {
   const [editingProxy, setEditingProxy] = useState<Proxy | null>(null);
   const [deletingProxy, setDeletingProxy] = useState<Proxy | null>(null);
   const [proxyFormProviderId, setProxyFormProviderId] = useState<string | null>(null);
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
 
   useEffect(() => {
     fetchProviders();
@@ -59,6 +61,10 @@ export default function ProvidersPage() {
     setShowProxyForm(true);
   };
 
+  const handleQuickAddProxy = async (data: ProxyCreate) => {
+    await createProxy(data);
+  };
+
   const handleProxySubmit = async (data: ProxyCreate | ProxyUpdate) => {
     if (editingProxy) {
       await updateProxy(editingProxy.id, editingProxy.label, data as ProxyUpdate);
@@ -87,9 +93,14 @@ export default function ProvidersPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Providers</h1>
-        <Button onClick={() => { setEditingProvider(null); setShowProviderForm(true); }}>
-          Add Provider
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={() => setShowQuickAdd(true)}>
+            Quick Add Proxy
+          </Button>
+          <Button onClick={() => { setEditingProvider(null); setShowProviderForm(true); }}>
+            Add Provider
+          </Button>
+        </div>
       </div>
 
       {providers.length === 0 ? (
@@ -146,6 +157,14 @@ export default function ProvidersPage() {
           onCancel={() => setDeletingProxy(null)}
         />
       )}
+
+      <QuickAddProxyDialog
+        isOpen={showQuickAdd}
+        onClose={() => setShowQuickAdd(false)}
+        onSubmit={handleQuickAddProxy}
+        providers={providers}
+        existingProxies={proxies}
+      />
     </div>
   );
 }

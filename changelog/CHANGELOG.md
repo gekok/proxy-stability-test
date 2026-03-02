@@ -697,6 +697,23 @@ Ghi lại toàn bộ quá trình phát triển project, từ lên plan đến im
 
 ---
 
+### v6.2 — Quick Add Proxy (2026-03-02)
+
+**Thêm tính năng Quick Add Proxy — batch import proxy qua full link.**
+
+**Dashboard (1 new file + 1 modified):**
+- **NEW** `components/proxies/QuickAddProxyDialog.tsx` — Modal cho phép paste proxy string dạng `host:port:user:pass` (1 hoặc nhiều dòng)
+  - Parse realtime: preview label, host:port, auth status
+  - Auto-generate label từ subdomain (vd: `snvt9.tunproxy.com` → `snvt9`)
+  - Duplicate detection: check trùng `host:port` với proxy đã có trong DB + trùng trong input
+  - Batch submit: tạo nhiều proxy cùng lúc, hiện kết quả OK/FAIL từng dòng
+  - Protocol mặc định `http` (residential proxy dùng CONNECT tunnel)
+- **Modified** `app/providers/page.tsx` — Thêm nút "Quick Add Proxy" bên cạnh "Add Provider"
+
+**Totals: ~136 source files (was ~135). Dashboard: 72 src files (was 71).**
+
+---
+
 ## Files
 
 | File | Mô tả |

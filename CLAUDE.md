@@ -29,7 +29,7 @@ A proxy stability testing system that evaluates **static residential proxies** (
 - **Dashboard**: Next.js 14, React, Tailwind CSS, `recharts` (Sprint 4), client-side `console.*` logging
 - **Database**: PostgreSQL with `uuid-ossp` extension
 
-## Current Directory Structure (Sprint 4 — ~135 source files)
+## Current Directory Structure (~136 source files)
 
 ```
 proxy-stability-test/
@@ -129,7 +129,7 @@ proxy-stability-test/
 │   ├── tsconfig.json
 │   └── Dockerfile
 │
-└── dashboard/                          ← Next.js 14 + Tailwind CSS — 71 src files + 4 config
+└── dashboard/                          ← Next.js 14 + Tailwind CSS — 72 src files + 4 config
     ├── tailwind.config.ts              # Score colors, pulse-slow animation
     ├── postcss.config.js
     ├── .env.local.example
@@ -139,7 +139,7 @@ proxy-stability-test/
     │   │   ├── page.tsx                # Overview (stat cards, active runs, recent results)
     │   │   ├── globals.css             # @tailwind directives + score utilities
     │   │   ├── error.tsx               # Global error boundary
-    │   │   ├── providers/page.tsx      # Provider CRUD + inline proxy expansion
+    │   │   ├── providers/page.tsx      # Provider CRUD + inline proxy expansion + Quick Add Proxy
     │   │   ├── runs/page.tsx           # Runs list + status filter (Suspense)
     │   │   ├── runs/[runId]/page.tsx   # Run detail (6 tabs, realtime polling 3s)
     │   │   └── compare/page.tsx        # Provider comparison (radar + table)
@@ -164,7 +164,7 @@ proxy-stability-test/
     │   │   │                           #   LatencyChart, UptimeTimeline, ScoreGauge, ScoreHistoryChart
     │   │   ├── compare/                # 3 files: ProviderSelect, RadarCompareChart, ComparisonTable
     │   │   ├── providers/              # ProviderList (expandable rows), ProviderForm, DeleteProviderDialog
-    │   │   ├── proxies/                # ProxyList, ProxyForm, ProxyCard, DeleteProxyDialog
+    │   │   ├── proxies/                # ProxyList, ProxyForm, ProxyCard, DeleteProxyDialog, QuickAddProxyDialog
     │   │   ├── test/                   # ProxySelector, TestConfigForm (+scoring thresholds), StartTestDialog
     │   │   ├── runs/                   # 14 files: RunHeader, RunSummaryCards (6 cards), RunMetricsDetail (5-component),
     │   │   │                           #   RunHttpSamples, RunWSSamples (scroll), RunIPCheck, RunScoreBreakdown,
